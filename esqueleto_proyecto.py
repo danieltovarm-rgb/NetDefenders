@@ -38,14 +38,30 @@ class Protagonista:
         
 # --------- Clase Hacker (Visual) ----------
 class HackerSprite:
-    def __init__(self, x, y, image_path):
-        # Cargar y escalar imagen
-        self.image = pygame.image.load(image_path).convert_alpha()
-        self.image = pygame.transform.scale(self.image, (400, 400))  # Ajuste de la imagen a 400x400
-        self.rect = self.image.get_rect(center=(x, y))
+    def __init__(self, x, y, image_paths, scale=(400,400)):
+        # image_paths es una lista de rutas ["idle1.png", "idle2.png", ...]
+        self.frames = []
+        for path in image_paths:
+            img = pygame.image.load(path).convert_alpha()
+            img = pygame.transform.scale(img, scale)
+            self.frames.append(img)
+        
+        self.rect = self.frames[0].get_rect(center=(x, y))
+
+        # Animación
+        self.frame_index = 0
+        self.animation_timer = 0
+        self.frame_duration = 450  # ms por frame
+
+    def update(self, dt):
+        """Avanza la animación idle en loop infinito"""
+        self.animation_timer += dt
+        if self.animation_timer >= self.frame_duration:
+            self.animation_timer = 0
+            self.frame_index = (self.frame_index + 1) % len(self.frames)
 
     def draw(self, surf):
-        surf.blit(self.image, self.rect)
+        surf.blit(self.frames[self.frame_index], self.rect)
 
 # --------- Clase Hacker (lógica de juego) ----------
 class HackerLogic:
@@ -179,7 +195,11 @@ class BaseLevelScreen(Screen):
                                         tipo_ataque=hacker_config["tipo_ataque"],
                                         probabilidad=hacker_config["probabilidad"])
         #(Visual) → recibe imagen distinta según el nivel
-        self.hacker_sprite = HackerSprite(620, 290, hacker_image)
+        self.hacker_sprite = HackerSprite(
+            620, 290,
+            ["assets/hacker/idle/idle1.png","assets/hacker/idle/idle2.png","assets/hacker/idle/idle3.png",
+             "assets/hacker/idle/idle4.png","assets/hacker/idle/idle5.png","assets/hacker/idle/idle6.png"]
+        )
 
         # Botones
         self.option_rects = []
@@ -269,7 +289,7 @@ class BaseLevelScreen(Screen):
     def update(self, dt):
         # dt en ms
         self.timer += dt
-
+        self.hacker_sprite.update(dt)
         # si estamos en narrativa no hacemos nada más
         if self.show_narrative:
             return
@@ -314,6 +334,7 @@ class BaseLevelScreen(Screen):
                 self.state = "idle"
                 self.timer = 0
                 return
+        
                 
     def _wrap_text(self, text, font, max_width):
         """Devuelve una lista de líneas que caben en max_width."""
