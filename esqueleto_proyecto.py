@@ -21,7 +21,7 @@ class Screen(ABC):
 class ProtagonistaSprite:
     def __init__(self, x, y):
         # Cargar la imagen del protagonista
-        self.image = pygame.image.load("protagonista_idle.png").convert_alpha()
+        self.image = pygame.image.load("assets/protagonista/idle.png").convert_alpha()
         self.image = pygame.transform.scale(self.image, (400, 400)) # Ajuste de la imagen a 400x400
         self.rect = self.image.get_rect(center=(x, y))
 
@@ -38,9 +38,9 @@ class Protagonista:
         
 # --------- Clase Hacker (Visual) ----------
 class HackerSprite:
-    def __init__(self, x, y):
+    def __init__(self, x, y, image_path):
         # Cargar y escalar imagen
-        self.image = pygame.image.load("hacker_idle.png").convert_alpha()
+        self.image = pygame.image.load(image_path).convert_alpha()
         self.image = pygame.transform.scale(self.image, (400, 400))  # Ajuste de la imagen a 400x400
         self.rect = self.image.get_rect(center=(x, y))
 
@@ -162,114 +162,46 @@ class LevelSelectScreen(Screen):
             txt = self.font.render(name, True, (0,0,0))
             surf.blit(txt, (rect.centerx - txt.get_width()//2, rect.centery - txt.get_height()//2))
 
-# --------- Pantalla del Nivel 1 ----------
-class Level1Screen(Screen):
-    def __init__(self, game):
+class BaseLevelScreen(Screen):
+    def __init__(self, game, narrative_lines, attack_templates, hacker_config, hacker_image):
         super().__init__(game)
         self.font = pygame.font.SysFont("Consolas", 28)
-        self.title_font = pygame.font.SysFont("Consolas", 28, bold=True)
         self.option_font = pygame.font.SysFont("Consolas", 20)
 
-        # Lógica del protagonista
-        self.protagonista = Protagonista(vida=100)
+        # Lógica y sprites
 
-        # Visual del protagonista (lado izquierdo)
+        #Protagonista
+        self.protagonista = Protagonista(vida=100)
         self.protagonista_sprite = ProtagonistaSprite(180, 290)
 
-        # ----------------- CONFIG. DEL HACKER (ATAQUES) -----------------
-        # ahora definimos las plantillas reales de ataque que serán usadas
-        # por la mecánica por-turnos. Cada plantilla incluye:
-        #  - message: texto que verá el jugador (el "ataque")
-        #  - options: lista de opciones que el jugador puede elegir
-        #  - correct: índice de la opción correcta
-        #  - damage_if_correct: daño que recibe el hacker si el jugador acierta
-        #  - damage_if_wrong: daño que recibe el jugador si falla
-        #  - chance_special: opcional (0..1) probabilidad de efecto adicional si falla (ej. robo)
-        self.attack_templates = {
-            "Phishing": {
-                "message": "¡Alerta! Hemos detectado actividad sospechosa en tu cuenta. Para protegerla, haz clic en el siguiente enlace y verifica tu identidad. Si no lo haces en las próximas 2 horas, tu cuenta será suspendida permanentemente.",
-                "options": [
-                    "Revisar dirección del remitente y reportar/ignorar (seguro)",
-                    "Hacer clic en el enlace y meter usuario/clave (pánico)",
-                    "Responder pidiendo más información"
-                ],
-                "correct": 0,
-                "damage_if_correct": 25,
-                "damage_if_wrong": 18,
-                "chance_special": 0.6,  # si falla, 60% de chance de 'robo de credenciales' efecto narrativo
-            },
-            "FuerzaBruta": {
-                "message": "Para obtener el 'Ítem Legendario', solo tienes que crear una contraseña. Consejo: usa tu nombre y año o palabras simples como '123456'. ¿Qué haces?",
-                "options": [
-                    "Crear una contraseña fuerte (larga, mezcla, símbolo) (seguro)",
-                    "Usar nombre+año o '123456' (débil)",
-                    "Reutilizar una contraseña antigua"
-                ],
-                "correct": 0,
-                "damage_if_correct": 20,
-                "damage_if_wrong": 25,
-                "chance_special": 0.25,  # probabilidad de que el hacker la descifre instantáneamente si es débil
-            },
-            "IngenieriaSocial": {
-                "message": "(Chat) '¡Hola! Soy tu amigo. Necesito la respuesta a tu pregunta de seguridad para recuperar un objeto: ¿Cuál fue el nombre de tu primera mascota?'",
-                "options": [
-                    "No compartir la respuesta y reportar (seguro)",
-                    "Dar la respuesta rápidamente (peligro)",
-                    "Preguntar por qué la necesita y colgar"
-                ],
-                "correct": 0,
-                "damage_if_correct": 22,
-                "damage_if_wrong": 20,
-                "chance_special": 0.5,
-            }
-        }
+        #Hacker
+        self.hacker_logic = HackerLogic(vida=100,
+                                        tipo_ataque=hacker_config["tipo_ataque"],
+                                        probabilidad=hacker_config["probabilidad"])
+        #(Visual) → recibe imagen distinta según el nivel
+        self.hacker_sprite = HackerSprite(620, 290, hacker_image)
 
-        # Ajuste de probabilidades de aparición (pesos)
-        tipo_ataque = {
-            "Phishing": 12,
-            "FuerzaBruta": 8,
-            "IngenieriaSocial": 10
-        }
-        probabilidad = {
-            "Phishing": 50,
-            "FuerzaBruta": 25,
-            "IngenieriaSocial": 25
-        }
-        self.hacker_logic = HackerLogic(vida=100, tipo_ataque=tipo_ataque, probabilidad=probabilidad)
-
-        # --- Interfaz de selección de opciones (botones) ---
-        # calculamos rects para hasta 4 opciones (en este nivel tenemos 3 por ataque)
+        # Botones
         self.option_rects = []
-        btn_w = 700
-        btn_h = 42
-        start_x = 50
-        start_y = 440
+        btn_w, btn_h = 700, 42
+        start_x, start_y = 50, 440
         for i in range(4):
-            r = pygame.Rect(start_x, start_y + i*(btn_h+12), btn_w, btn_h)
-            self.option_rects.append(r)
+            self.option_rects.append(pygame.Rect(start_x, start_y + i*(btn_h+12), btn_w, btn_h))
 
-        # Estado de juego adicional
-        # estados: waiting_narrative, idle, player_choice, cooldown, finished
+        # Estado del juego
         self.state = "waiting_narrative"
-        self.current_attack_key = None     # nombre de la plantilla seleccionada ahora
-        self.last_result_text = ""         # texto que muestra el resultado del turno
-        self.turno_num = 0                 # número de turnos transcurridos (para escalar)
+        self.current_attack_key = None
+        self.last_result_text = ""
+        self.turno_num = 0
         self.timer = 0
 
-        # Visual del hacker (lado derecho)
-        self.hacker_sprite = HackerSprite(620, 290)
+        # Narrativa
+        self.narrative_lines = narrative_lines
+        self.narrative_index = 0
+        self.show_narrative = True
 
-        # --- NARRATIVA / INTRO DEL NIVEL ---
-        # Lista de líneas para mostrar (puedes editar el texto aquí)
-        self.narrative_lines = [
-            "Nivel 1: Intento de PHISHING",
-            "Has recibido un correo sospechoso que solicita tu contraseña.",
-            "Debes identificar si el correo es legítimo o un intento de suplantación.",
-            "Responde correctamente durante el combate para contrarrestar al hacker."
-        ]
-        self.narrative_index = 0           # línea actual mostrada
-        self.show_narrative = True         # mientras True, no comienza el combate
-        # El jugador puede hacer click para saltar la narrativa (ver handle_event)
+        # Plantillas de ataques
+        self.attack_templates = attack_templates
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -467,6 +399,70 @@ class Level1Screen(Screen):
             skip_txt = self.font.render("Haz clic para continuar", True, (180,180,180))
             surf.blit(skip_txt, (box_x + (box_surf.get_width() - skip_txt.get_width()) - 10,
                                  box_y + box_h - skip_txt.get_height() - 10))
+
+# --------- Pantalla del Nivel 1 ----------
+class Level1Screen(BaseLevelScreen):
+    def __init__(self, game):
+        narrative = [
+            "Nivel 1: Intento de PHISHING",
+            "Has recibido un correo sospechoso que solicita tu contraseña.",
+            "Debes identificar si el correo es legítimo o un intento de suplantación.",
+            "Responde correctamente durante el combate para contrarrestar al hacker."
+        ]
+
+        attack_templates = {
+            "Phishing": {
+                "message": "¡Alerta! Hemos detectado actividad sospechosa en tu cuenta. Para protegerla, haz clic en el siguiente enlace y verifica tu identidad. Si no lo haces en las próximas 2 horas, tu cuenta será suspendida permanentemente.",
+                "options": [
+                    "Revisar dirección del remitente y reportar/ignorar (seguro)",
+                    "Hacer clic en el enlace y meter usuario/clave (pánico)",
+                    "Responder pidiendo más información"
+                ],
+                "correct": 0,
+                "damage_if_correct": 25,
+                "damage_if_wrong": 18,
+                "chance_special": 0.6,  # si falla, 60% de chance de 'robo de credenciales' efecto narrativo
+            },
+            "FuerzaBruta": {
+                "message": "Para obtener el 'Ítem Legendario', solo tienes que crear una contraseña. Consejo: usa tu nombre y año o palabras simples como '123456'. ¿Qué haces?",
+                "options": [
+                    "Crear una contraseña fuerte (larga, mezcla, símbolo) (seguro)",
+                    "Usar nombre+año o '123456' (débil)",
+                    "Reutilizar una contraseña antigua"
+                ],
+                "correct": 0,
+                "damage_if_correct": 20,
+                "damage_if_wrong": 25,
+                "chance_special": 0.25,  # probabilidad de que el hacker la descifre instantáneamente si es débil
+            },
+            "IngenieriaSocial": {
+                "message": "(Chat) '¡Hola! Soy tu amigo. Necesito la respuesta a tu pregunta de seguridad para recuperar un objeto: ¿Cuál fue el nombre de tu primera mascota?'",
+                "options": [
+                    "No compartir la respuesta y reportar (seguro)",
+                    "Dar la respuesta rápidamente (peligro)",
+                    "Preguntar por qué la necesita y colgar"
+                ],
+                "correct": 0,
+                "damage_if_correct": 22,
+                "damage_if_wrong": 20,
+                "chance_special": 0.5,
+            }
+        }
+
+        hacker_config = {
+            "tipo_ataque": {
+                "Phishing": 12, 
+                "FuerzaBruta": 8, 
+                "IngenieriaSocial": 10
+            },
+            "probabilidad": {
+                "Phishing": 50,
+                "FuerzaBruta": 25,      
+                "IngenieriaSocial": 25
+            }
+        }
+
+        super().__init__(game, narrative, attack_templates, hacker_config, hacker_image="assets/hacker/idle.png")
 
 # --------- Clase principal del juego ----------
 class Game:
