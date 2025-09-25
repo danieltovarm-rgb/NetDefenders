@@ -498,19 +498,19 @@ class Game:
     def change_screen(self, new_screen):
         self.current = new_screen
 
-    def run(self):
-        while self.running:
-            dt = self.clock.tick(FPS)  # dt en ms
-            for event in pygame.event.get():
+    def run(self): 
+        while self.running:                                # ← INICIO DEL BUCLE PRINCIPAL
+            dt = self.clock.tick(FPS)  # dt en ms          #  Gesiton de FPS
+            for event in pygame.event.get():               #  Gestioón de eventos 
                 if event.type == pygame.QUIT:
                     self.running = False
                 else:
                     self.current.handle_event(event)
 
-            self.current.update(dt)
-            self.current.render(self.screen)
-            pygame.display.flip()
-
+            self.current.update(dt)                        # Actualización logica
+            self.current.render(self.screen)               # Renderizado en pantalla
+            pygame.display.flip()                          # Refrescar pantalla
+                                                           # ← FIN DEL BUCLE PRINCIPAL
         pygame.quit()
 
 # --------- Main ---------
