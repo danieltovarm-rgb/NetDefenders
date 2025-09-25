@@ -494,6 +494,7 @@ class Game:
         self.clock = pygame.time.Clock()
         self.current = MenuScreen(self)
         self.running = True
+        self.font = pygame.font.SysFont("Consolas", 18)
 
     def change_screen(self, new_screen):
         self.current = new_screen
