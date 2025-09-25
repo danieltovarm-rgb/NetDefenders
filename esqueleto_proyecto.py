@@ -509,6 +509,10 @@ class Game:
 
             self.current.update(dt)                        # Actualización logica
             self.current.render(self.screen)               # Renderizado en pantalla
+            # --- Mostrar FPS ---
+            fps_text = self.font.render(f"FPS: {int(self.clock.get_fps())}", True, (255, 255, 0))
+            self.screen.blit(fps_text, (10, 10))           # Esquina superior izquierda
+
             pygame.display.flip()                          # Refrescar pantalla
                                                            # ← FIN DEL BUCLE PRINCIPAL
         pygame.quit()
