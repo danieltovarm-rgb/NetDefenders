@@ -426,7 +426,7 @@ class Level1Screen(BaseLevelScreen):
     def __init__(self, game):
         narrative = [
             "Nivel 1: Intento de PHISHING",
-            "Has recibido un correo sospechoso que solicita tu contraseña.",
+            "Has recibido un correo sospechoso.",
             "Debes identificar si el correo es legítimo o un intento de suplantación.",
             "Responde correctamente durante el combate para contrarrestar al hacker."
         ]
@@ -435,8 +435,8 @@ class Level1Screen(BaseLevelScreen):
             "Phishing": {
                 "message": "¡Alerta! Hemos detectado actividad sospechosa en tu cuenta. Para protegerla, haz clic en el siguiente enlace y verifica tu identidad. Si no lo haces en las próximas 2 horas, tu cuenta será suspendida permanentemente.",
                 "options": [
-                    "Revisar dirección del remitente y reportar/ignorar (seguro)",
-                    "Hacer clic en el enlace y meter usuario/clave (pánico)",
+                    "Revisar dirección del remitente y reportar/ignorar",
+                    "Hacer clic en el enlace y meter usuario/clave",
                     "Responder pidiendo más información"
                 ],
                 "correct": 0,
@@ -445,10 +445,10 @@ class Level1Screen(BaseLevelScreen):
                 "chance_special": 0.6,  # si falla, 60% de chance de 'robo de credenciales' efecto narrativo
             },
             "FuerzaBruta": {
-                "message": "Para obtener el 'Ítem Legendario', solo tienes que crear una contraseña. Consejo: usa tu nombre y año o palabras simples como '123456'. ¿Qué haces?",
+                "message": "Para obtener el 'Ítem Legendario', solo tienes que crear una contraseña. ¿Qué haces?",
                 "options": [
-                    "Crear una contraseña fuerte (larga, mezcla, símbolo) (seguro)",
-                    "Usar nombre+año o '123456' (débil)",
+                    "Crear una contraseña larga, con números y símbolos",
+                    "Usar nombre+año o '123456'",
                     "Reutilizar una contraseña antigua"
                 ],
                 "correct": 0,
@@ -459,8 +459,8 @@ class Level1Screen(BaseLevelScreen):
             "IngenieriaSocial": {
                 "message": "(Chat) '¡Hola! Soy tu amigo. Necesito la respuesta a tu pregunta de seguridad para recuperar un objeto: ¿Cuál fue el nombre de tu primera mascota?'",
                 "options": [
-                    "No compartir la respuesta y reportar (seguro)",
-                    "Dar la respuesta rápidamente (peligro)",
+                    "No compartir la respuesta y reportar",
+                    "Dar la respuesta",
                     "Preguntar por qué la necesita y colgar"
                 ],
                 "correct": 0,
