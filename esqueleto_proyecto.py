@@ -1,5 +1,7 @@
 import pygame, sys, random
+import numpy as np
 from abc import ABC, abstractmethod
+from moviepy.editor import VideoFileClip
 
 # Configuración
 SCREEN_W, SCREEN_H = 800, 600
@@ -16,6 +18,38 @@ class Screen(ABC):
     def update(self, dt): ...
     @abstractmethod
     def render(self, surf): ...
+
+# --------- Clase para el video de inicio ----------
+class IntroVideoScreen(Screen):
+    def __init__(self, game, video_path):
+        super().__init__(game)
+        self.video = VideoFileClip(video_path)
+        self.frame_gen = self.video.iter_frames(fps=25, dtype='uint8')
+        self.finished = False
+
+    def handle_event(self, event):
+        # Si presionas una tecla o haces click, saltas el video
+        if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+            self.finished = True
+            self.video.close()
+            self.game.change_screen(MenuScreen(self.game))
+
+    def update(self, dt):
+        try:
+            frame = next(self.frame_gen)
+            # Convertir a superficie Pygame
+            frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+            frame_surface = pygame.transform.scale(frame_surface, (SCREEN_W, SCREEN_H))
+            self.current_frame = frame_surface
+        except StopIteration:
+            # El video terminó
+            self.finished = True
+            self.video.close()
+            self.game.change_screen(MenuScreen(self.game))
+
+    def render(self, surf):
+        if hasattr(self, "current_frame"):
+            surf.blit(self.current_frame, (0, 0))
 
 # --------- Clase Protagonista (Visual) ----------
 class ProtagonistaSprite:
@@ -492,7 +526,7 @@ class Game:
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         pygame.display.set_caption("NetDefenders")
         self.clock = pygame.time.Clock()
-        self.current = MenuScreen(self)
+        self.current = IntroVideoScreen(self, "intro.mp4")
         self.running = True
         self.font = pygame.font.SysFont("Consolas", 18)
 
