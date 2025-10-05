@@ -31,10 +31,10 @@ class ProtagonistaSprite:
 # --------- Clase Protagonista (protagonista lógica simple) ----------
 class Protagonista:
     def __init__(self, vida=100):
-        self.vida = vida
+        self.vida = vida                            # ← Vida del jugador
 
     def recibir_daño(self, daño):
-        self.vida = max(0, self.vida - daño)
+        self.vida = max(0, self.vida - daño)        # ← Resta vida al recibir daño
         
 # --------- Clase Hacker (Visual) ----------
 class HackerSprite:
@@ -121,10 +121,10 @@ class MenuScreen(Screen):
             self.buttons.append((opt, txt, rect))
 
     def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mx, my = event.pos
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:        # Detecta clic izquierdo
+            mx, my = event.pos                                                # Coordenadas del clic
             for opt, txt, rect in self.buttons:
-                if rect.collidepoint(mx, my):
+                if rect.collidepoint(mx, my):                            
                     if opt == "Jugar":
                         self.game.change_screen(LevelSelectScreen(self.game))
                     elif opt == "Salir":
@@ -154,13 +154,13 @@ class LevelSelectScreen(Screen):
     def create_levels(self):
         # Por ahora solo Nivel 1
         rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 50, 200, 100)
-        self.levels.append(("Nivel 1", rect))
+        self.levels.append(("Nivel 1", rect))                 # ← Carga Nivel 1
 
     def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mx, my = event.pos
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:    # ← Detecta clic izquierdo
+            mx, my = event.pos                                            # ← Coordenadas del clic
             for name, rect in self.levels:
-                if rect.collidepoint(mx,my):
+                if rect.collidepoint(mx,my):                              # ← ¿El clic fue dentro del botón?               
                     if name == "Nivel 1":
                         self.game.change_screen(Level1Screen(self.game))
 
@@ -241,7 +241,7 @@ class BaseLevelScreen(Screen):
                 # sólo comprobamos los rects de opciones visibles
                 tpl = self.attack_templates[self.current_attack_key]
                 for i, opt_rect in enumerate(self.option_rects[:len(tpl["options"])]):
-                    if opt_rect.collidepoint(mx, my):
+                    if opt_rect.collidepoint(mx, my):        # ¿El clic fue dentro del botón?
                         # evaluar elección
                         chosen = i
                         correct = tpl["correct"]
@@ -249,12 +249,12 @@ class BaseLevelScreen(Screen):
                         if chosen == correct:
                             dmg = tpl["damage_if_correct"]
                             # hacer daño al hacker
-                            self.hacker_logic.vida = max(0, self.hacker_logic.vida - dmg)
+                            self.hacker_logic.vida = max(0, self.hacker_logic.vida - dmg)     # Acción correcta daña al hacker
                             self.last_result_text = f"Respuesta correcta: infligiste {dmg} al hacker."
                         else:
                             # fallo: se aplica daño al jugador y chance de efecto especial (narrativo)
                             dmg = tpl["damage_if_wrong"]
-                            self.protagonista.recibir_daño(dmg)
+                            self.protagonista.recibir_daño(dmg)                        # Acción incorrecta daña al jugador
                             special = False
                             if random.random() < tpl.get("chance_special", 0):
                                 special = True
@@ -494,23 +494,28 @@ class Game:
         self.clock = pygame.time.Clock()
         self.current = MenuScreen(self)
         self.running = True
+        self.font = pygame.font.SysFont("Consolas", 18)
 
     def change_screen(self, new_screen):
         self.current = new_screen
 
-    def run(self):
-        while self.running:
-            dt = self.clock.tick(FPS)  # dt en ms
-            for event in pygame.event.get():
+    def run(self): 
+        while self.running:                                # ← INICIO DEL BUCLE PRINCIPAL
+            dt = self.clock.tick(FPS)  # dt en ms          #  Gesiton de FPS
+            for event in pygame.event.get():               #  Gestioón de eventos 
                 if event.type == pygame.QUIT:
                     self.running = False
                 else:
                     self.current.handle_event(event)
 
-            self.current.update(dt)
-            self.current.render(self.screen)
-            pygame.display.flip()
+            self.current.update(dt)                        # Actualización logica
+            self.current.render(self.screen)               # Renderizado en pantalla
+            # --- Mostrar FPS ---
+            fps_text = self.font.render(f"FPS: {int(self.clock.get_fps())}", True, (255, 255, 0))
+            self.screen.blit(fps_text, (10, 10))           # Esquina superior izquierda
 
+            pygame.display.flip()                          # Refrescar pantalla
+                                                           # ← FIN DEL BUCLE PRINCIPAL
         pygame.quit()
 
 # --------- Main ---------
