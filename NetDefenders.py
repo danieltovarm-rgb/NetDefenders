@@ -22,7 +22,91 @@ class Screen(ABC):
     @abstractmethod
     def render(self, surf): ...
 
+# --------- Utilidades visuales (Matrix Rain y Glitch Text) ----------
+class MatrixRain:
+    def __init__(self, width, height, font_name="Consolas", font_size=16, charset=None, column_density=1.0):
+        self.w = width
+        self.h = height
+        self.font = pygame.font.SysFont(font_name, font_size)
+        self.char_h = self.font.get_height()
+        self.char_w = self.font.size("M")[0]
+        self.cols = max(1, self.w // self.char_w)
+        self.charset = charset or list("01ABCDEFGHJKLMNPQRSTUVWXYZ1234567890")
+        # pre-render glyphs in green and head brighter
+        self.glyphs = {}
+        for ch in self.charset:
+            surf = self.font.render(ch, True, (0, 200, 70))
+            head = self.font.render(ch, True, (170, 255, 170))
+            self.glyphs[ch] = (surf, head)
 
+        self.columns = []
+        import random as _r
+        for i in range(self.cols):
+            speed = _r.uniform(120, 220)
+            length = _r.randint(8, 18)
+            y = _r.uniform(-self.h, 0)
+            # populate char sequence
+            seq = [_r.choice(self.charset) for _ in range(length)]
+            self.columns.append({
+                "x": i * self.char_w,
+                "y": y,
+                "speed": speed,
+                "len": length,
+                "seq": seq,
+            })
+
+    def update(self, dt):
+        dy_factor = dt / 1000.0
+        for col in self.columns:
+            col["y"] += col["speed"] * dy_factor
+            if col["y"] - col["len"] * self.char_h > self.h:
+                # reset above the screen
+                import random as _r
+                col["y"] = _r.uniform(-self.h * 0.3, 0)
+                col["speed"] = _r.uniform(120, 220)
+                col["len"] = _r.randint(8, 18)
+                col["seq"] = [_r.choice(self.charset) for _ in range(col["len"])]
+
+    def draw(self, surf, alpha=140):
+        overlay = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
+        for col in self.columns:
+            x = col["x"]
+            y_head = col["y"]
+            for i in range(col["len"]):
+                y = int(y_head - i * self.char_h)
+                if y < -self.char_h or y > self.h:
+                    continue
+                ch = col["seq"][i % len(col["seq"])]
+                glyph, head = self.glyphs[ch]
+                g = head if i == 0 else glyph
+                # vary alpha along the trail
+                a = max(30, 200 - i * 12)
+                g.set_alpha(a)
+                overlay.blit(g, (x, y))
+        overlay.set_alpha(alpha)
+        surf.blit(overlay, (0, 0))
+
+def draw_glitch_text_surf(dest_surf, text_surf, center, scale=1.0, glitch_prob=0.08):
+    # scale base
+    tw, th = text_surf.get_size()
+    dw, dh = max(1, int(tw * scale)), max(1, int(th * scale))
+    base = pygame.transform.smoothscale(text_surf, (dw, dh))
+    x = center[0] - dw // 2
+    y = center[1] - dh // 2
+    dest_surf.blit(base, (x, y))
+    import random as _r
+    if _r.random() < glitch_prob:
+        # cyan shadow left
+        c1 = base.copy()
+        c1.fill((0, 200, 255), special_flags=pygame.BLEND_RGB_ADD)
+        c1.set_alpha(120)
+        dest_surf.blit(c1, (x - 1, y))
+        # magenta shadow right
+        c2 = base.copy()
+        c2.fill((255, 50, 200), special_flags=pygame.BLEND_RGB_ADD)
+        c2.set_alpha(120)
+        dest_surf.blit(c2, (x + 1, y + 0))
+    
 # --------- Clase para el video de inicio ----------
 class IntroVideoScreen(Screen):
     def __init__(self, game, video_path):
@@ -38,6 +122,8 @@ class IntroVideoScreen(Screen):
             self.game.change_screen(MenuScreen(self.game))
 
     def update(self, dt):
+        if getattr(self, 'finished', False):
+            return
         try:
             frame = next(self.frame_gen)
             frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
@@ -51,6 +137,54 @@ class IntroVideoScreen(Screen):
     def render(self, surf):
         if hasattr(self, "current_frame"):
             surf.blit(self.current_frame, (0, 0))
+
+
+# --------- Glitch Transition Screen ----------
+class GlitchTransitionScreen(Screen):
+    def __init__(self, game, target_screen, duration=600, slices=18):
+        super().__init__(game)
+        self.target = target_screen
+        self.duration = duration
+        self.timer = 0
+        self.slices = slices
+        self._snapshot = pygame.Surface((SCREEN_W, SCREEN_H))
+        self._noise = pygame.Surface((SCREEN_W, SCREEN_H))
+        self._noise.set_alpha(80)
+        self._rng = random.Random()
+
+    def handle_event(self, event):
+        pass
+
+    def update(self, dt):
+        self.timer += dt
+        if self.timer >= self.duration:
+            self.game.set_screen(self.target)
+
+    def render(self, surf):
+        # render target once into snapshot
+        self.target.render(self._snapshot)
+        # draw snapshot with glitch slices
+        t = min(1.0, self.timer / self.duration)
+        offset_amp = int(10 + 30 * (1.0 - (1.0 - t) ** 2))  # ease-out increase
+        slice_h = max(2, SCREEN_H // self.slices)
+        for i in range(self.slices):
+            y = i * slice_h
+            if y >= SCREEN_H:
+                break
+            h = slice_h if y + slice_h <= SCREEN_H else (SCREEN_H - y)
+            # horizontal offset jitter
+            jitter = self._rng.randint(-offset_amp, offset_amp)
+            src_rect = pygame.Rect(0, y, SCREEN_W, h)
+            dst_rect = pygame.Rect(jitter, y, SCREEN_W, h)
+            surf.blit(self._snapshot, dst_rect, src_rect)
+        # add noise flashes
+        arr = pygame.surfarray.pixels3d(self._noise)
+        arr[:, :, 0] = self._rng.randint(0, 60)
+        arr[:, :, 1] = self._rng.randint(0, 60)
+        arr[:, :, 2] = self._rng.randint(0, 60)
+        del arr
+        self._noise.set_alpha(self._rng.randint(40, 120))
+        surf.blit(self._noise, (0, 0), special_flags=pygame.BLEND_ADD)
 
 
 # --------- (NUEVA) Clase Correo ----------
@@ -209,20 +343,40 @@ class MenuScreen(Screen):
         super().__init__(game)
         self.font = pygame.font.SysFont("Consolas", 40)
         self.options = ["Jugar", "Salir"]
-        self.buttons = []
+        self.buttons = []  # (opt, txt, rect, anim)
         self.create_buttons()
+        # Fondo del menú 
+        try:
+            self.menu_background = pygame.image.load("assets/fondo_menu.png").convert()
+            self.menu_background = pygame.transform.scale(self.menu_background, (SCREEN_W, SCREEN_H))
+        except Exception:
+            self.menu_background = None
+        # reveal animation
+        self._start_time = 0
+        # Matrix Rain background
+        self.matrix = MatrixRain(SCREEN_W, SCREEN_H, font_size=16)
 
     def create_buttons(self):
         for i, opt in enumerate(self.options):
             txt = self.font.render(opt, True, (255, 255, 255))
             rect = txt.get_rect(center=(SCREEN_W // 2, 250 + i * 80))
-            self.buttons.append((opt, txt, rect))
+            anim = {
+                "scale": 0.8,
+                "target": 1.0,
+                "hover_scale": 1.08,
+                "press_scale": 0.95,
+                "speed": 8.0,
+                "reveal_delay": i * 120,
+                "revealed": False
+            }
+            self.buttons.append([opt, txt, rect, anim])
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
-            for opt, txt, rect in self.buttons:
+            for opt, txt, rect, anim in self.buttons:
                 if rect.collidepoint(mx, my):
+                    anim["scale"] = anim.get("press_scale", 0.95)  # click tap animation
                     if opt == "Jugar":
                         self.game.change_screen(LevelSelectScreen(self.game))
                     elif opt == "Salir":
@@ -230,18 +384,50 @@ class MenuScreen(Screen):
                         sys.exit()
 
     def update(self, dt):
-        pass
+        # lazy start timer (could be time since screen created)
+        self._start_time += dt
+        self.matrix.update(dt)
+        mx, my = pygame.mouse.get_pos()
+        for i in range(len(self.buttons)):
+            opt, txt, rect, anim = self.buttons[i]
+            # reveal
+            if not anim["revealed"] and self._start_time >= anim["reveal_delay"]:
+                anim["revealed"] = True
+                anim["scale"] = 0.8
+            if not anim["revealed"]:
+                continue
+            # hover target
+            target = anim["hover_scale"] if rect.collidepoint(mx, my) else 1.0
+            # interpolate
+            factor = min(1.0, anim.get("speed", 8.0) * dt / 1000.0)
+            anim["scale"] = anim["scale"] + (target - anim["scale"]) * factor
 
     def render(self, surf):
-        surf.fill((30, 30, 50))
-        title = self.font.render("Juego de Ciberseguridad", True, (255, 255, 255))
-        surf.blit(title, (SCREEN_W // 2 - title.get_width() // 2, 100))
+        # Dibujar fondo del menú si existe
+        if self.menu_background:
+            surf.blit(self.menu_background, (0, 0))
+        else:
+            surf.fill((30, 30, 50))
+        # Matrix rain overlay
+        self.matrix.draw(surf, alpha=130)
+        title = self.font.render("NetDefenders", True, (255, 255, 255))
+        draw_glitch_text_surf(surf, title, (SCREEN_W // 2, 100), scale=1.0, glitch_prob=0.12)
 
         mx, my = pygame.mouse.get_pos()
-        for opt, txt, rect in self.buttons:
+        for opt, txt, rect, anim in self.buttons:
+            if not anim.get("revealed", True):
+                continue
+            scale = anim.get("scale", 1.0)
             color = (255, 255, 100) if rect.collidepoint(mx, my) else (200, 200, 200)
             txt = self.font.render(opt, True, color)
-            surf.blit(txt, rect)
+            # scale text surface
+            tw, th = txt.get_size()
+            draw_w = int(tw * scale)
+            draw_h = int(th * scale)
+            txt_scaled = pygame.transform.smoothscale(txt, (draw_w, draw_h))
+            draw_x = rect.centerx - draw_w // 2
+            draw_y = rect.centery - draw_h // 2
+            surf.blit(txt_scaled, (draw_x, draw_y))
 
 
 # --------- Pantalla Selección de Nivel ----------
@@ -249,35 +435,135 @@ class LevelSelectScreen(Screen):
     def __init__(self, game):
         super().__init__(game)
         self.font = pygame.font.SysFont("Consolas", 30)
-        self.levels = []
+        # Botones imagen para niveles
+        self.level_buttons = []
         self.create_levels()
+        # Usar la misma imagen de fondo que el menú (si está disponible)
+        try:
+            self.background = pygame.image.load("assets/fondo_menu.png").convert()
+            self.background = pygame.transform.scale(self.background, (SCREEN_W, SCREEN_H))
+        except Exception:
+            self.background = None
+        # matrix rain
+        self.matrix = MatrixRain(SCREEN_W, SCREEN_H, font_size=16)
 
     def create_levels(self):
-        rect = pygame.Rect(SCREEN_W // 2 - 100, SCREEN_H // 2 - 50, 200, 100)
-        self.levels.append(("Nivel 1", rect))
+        # Crear tres botones imagen: nivel1, nivel2, nivel3
+        # Mantener la proporción original 622x233 al escalar los botones
+        orig_w, orig_h = 622, 233
+        aspect = orig_w / orig_h
+        # Altura objetivo reducida para botones más pequeños
+        btn_h = 80
+        btn_w = int(btn_h * aspect)  # ancho manteniendo proporción
+
+        # Espacio entre centros de botones
+        spacing = btn_w + 24
+        center_y = SCREEN_H // 2
+        center_x = SCREEN_W // 2
+
+        centers = [ (center_x - spacing, center_y), (center_x, center_y), (center_x + spacing, center_y) ]
+
+        image_paths = ["assets/boton_phishing.png", "assets/boton_malware.png", "assets/boton_ingsocial.png"]
+        names = ["Nivel 1", "Nivel 2", "Nivel 3"]
+        enabled_flags = [True, False, False]
+
+        for i in range(3):
+            cx, cy = centers[i]
+            rect = pygame.Rect(0, 0, btn_w, btn_h)
+            rect.center = (cx, cy)
+            self.level_buttons.append({
+                "name": names[i],
+                "image_path": image_paths[i],
+                "rect": rect,
+                "enabled": enabled_flags[i],
+                # animation fields
+                "base_image": None,
+                "base_size": (btn_w, btn_h),
+                "scale": 0.85,
+                "hover_scale": 1.08,
+                "press_scale": 0.96,
+                "speed": 8.0,
+                "revealed": False,
+                "reveal_delay": i * 120
+            })
+
+        # precargar imágenes
+        for btn in self.level_buttons:
+            try:
+                img = pygame.image.load(btn["image_path"]).convert_alpha()
+                img = pygame.transform.smoothscale(img, (btn["rect"].width, btn["rect"].height))
+                btn["base_image"] = img
+            except Exception:
+                btn["base_image"] = None
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
-            for name, rect in self.levels:
-                if rect.collidepoint(mx, my):
-                    if name == "Nivel 1":
-                        self.game.change_screen(Level1Screen(self.game))
+            for btn in self.level_buttons:
+                if btn["rect"].collidepoint(mx, my):
+                    btn["scale"] = btn.get("press_scale", 0.96)  # click tap anim
+                    if btn.get("enabled", False):
+                        if btn["name"] == "Nivel 1":
+                            target = Level1Screen(self.game)
+                            self.game.set_screen(GlitchTransitionScreen(self.game, target, duration=650, slices=22))
+                    else:
+                        #Añadir feedback si intentan pulsar un nivel bloqueado
+                        pass
 
     def update(self, dt):
-        pass
+        self.matrix.update(dt)
+        mx, my = pygame.mouse.get_pos()
+        for i in range(len(self.level_buttons)):
+            btn = self.level_buttons[i]
+            # reveal grid-like (staggered by index)
+            btn.setdefault('_time', 0)
+            btn['_time'] += dt
+            if not btn["revealed"] and btn['_time'] >= btn.get("reveal_delay", 0):
+                btn["revealed"] = True
+                btn["scale"] = 0.85
+            if not btn["revealed"]:
+                continue
+            target = 1.0
+            if btn.get("enabled", False) and btn["rect"].collidepoint(mx, my):
+                target = btn.get("hover_scale", 1.08)
+            factor = min(1.0, btn.get("speed", 8.0) * dt / 1000.0)
+            btn["scale"] = btn["scale"] + (target - btn["scale"]) * factor
 
     def render(self, surf):
-        surf.fill((20, 50, 70))
+        # Dibujar fondo compartido con el menú si existe
+        if getattr(self, 'background', None):
+            surf.blit(self.background, (0, 0))
+        else:
+            surf.fill((20, 50, 70))
+        self.matrix.draw(surf, alpha=130)
         header = self.font.render("Selecciona un nivel (haz click)", True, (255, 255, 255))
-        surf.blit(header, (SCREEN_W // 2 - header.get_width() // 2, 100))
+        draw_glitch_text_surf(surf, header, (SCREEN_W // 2, 100), scale=1.0, glitch_prob=0.1)
 
         mx, my = pygame.mouse.get_pos()
-        for name, rect in self.levels:
-            color = (200, 200, 100) if rect.collidepoint(mx, my) else (100, 100, 100)
-            pygame.draw.rect(surf, color, rect)
-            txt = self.font.render(name, True, (0, 0, 0))
-            surf.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+        for btn in self.level_buttons:
+            if not btn.get("revealed", True):
+                continue
+            rect = btn["rect"]
+            base_img = btn.get("base_image")
+            enabled = btn.get("enabled", False)
+            scale = btn.get("scale", 1.0)
+
+            if base_img:
+                w, h = btn.get("base_size", (rect.width, rect.height))
+                draw_w = int(w * scale)
+                draw_h = int(h * scale)
+                img = pygame.transform.smoothscale(base_img, (draw_w, draw_h))
+                draw_x = rect.centerx - draw_w // 2
+                draw_y = rect.centery - draw_h // 2
+                surf.blit(img, (draw_x, draw_y))
+            else:
+                hover = rect.collidepoint(mx, my)
+                color = (200, 200, 100) if hover and enabled else (120, 120, 120)
+                if not enabled:
+                    color = (80, 80, 80)
+                pygame.draw.rect(surf, color, rect, border_radius=8)
+                txt = self.font.render(btn["name"], True, (0, 0, 0))
+                surf.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
 
 
 # --------- (NUEVA) Pantalla del Nivel 1 con Sistema de Correos ----------
@@ -323,6 +609,10 @@ class Level1Screen(BaseLevelScreen):
         self.tiempo_escritura = 0
         self.velocidad_escritura = 30
 
+        # Iniciar animación de la primera línea de narrativa
+        if self.show_narrative and self.narrative_lines:
+            self.iniciar_texto_animado(self.narrative_lines[self.narrative_index])
+
         # Botones de interfaz
         self.botones_accion = [
             {"rect": pygame.Rect(SCREEN_W // 2 - 300, SCREEN_H - 150, 180, 40), "accion": "responder",
@@ -341,6 +631,9 @@ class Level1Screen(BaseLevelScreen):
         self.boton_confirmar = pygame.Rect(SCREEN_W // 2 - 60, SCREEN_H - 60, 120, 40)
 
         self.last_feedback = ""
+
+        # Tamaño del botón 'Volver' (la posición se calcula dinámicamente)
+        self.boton_volver_size = (80, 30)
 
     def cargar_correos(self):
         return [
@@ -536,7 +829,8 @@ class Level1Screen(BaseLevelScreen):
 
     def iniciar_texto_animado(self, texto):
         self.texto_completo = texto
-        self.texto_actual = ""
+        # Mostrar inmediatamente el primer carácter para evitar un frame en blanco
+        self.texto_actual = texto[0] if texto else ""
         self.tiempo_escritura = 0
 
     def handle_event(self, event):
@@ -544,8 +838,17 @@ class Level1Screen(BaseLevelScreen):
             mx, my = event.pos
 
             if self.estado == "narrativa_inicial":
+                # Si el texto aún se está animando, completarlo al hacer click (no avanzar todavía)
+                if len(self.texto_actual) < len(self.texto_completo):
+                    self.texto_actual = self.texto_completo
+                    return
+
+                # Si el texto ya está completo, avanzar a la siguiente línea
                 if not self.avanzar_narrativa():
                     self.estado = "esperando_correo"
+                else:
+                    # Iniciar animación para la siguiente línea
+                    self.iniciar_texto_animado(self.narrative_lines[self.narrative_index])
                 return
 
             if self.tutor_visible:
@@ -561,13 +864,44 @@ class Level1Screen(BaseLevelScreen):
                 bandeja_rect = pygame.Rect(200, 150, 400, 300)
                 if bandeja_rect.collidepoint(mx, my):
                     correos_disponibles = [c for c in self.correos if c.visible and not c.procesado]
-                    if correos_disponibles:
-                        self.correo_abierto = correos_disponibles[0]
+                    # Calcular qué correo fue clicado usando el mismo y_offset y separación que en render()
+                    y_offset = 50
+                    line_h = self.small_font.get_height() + 5
+                    seleccionado = None
+                    for correo in correos_disponibles:
+                        line_rect = pygame.Rect(bandeja_rect.x + 10, bandeja_rect.y + y_offset, bandeja_rect.width - 20, line_h)
+                        if line_rect.collidepoint(mx, my):
+                            seleccionado = correo
+                            break
+                        y_offset += 25
+
+                    if seleccionado:
+                        self.correo_abierto = seleccionado
                         self.estado = "correo_abierto"
                         texto_correo = f"De: {self.correo_abierto.remitente}\nAsunto: {self.correo_abierto.asunto}\n\n{self.correo_abierto.contenido}"
                         self.iniciar_texto_animado(texto_correo)
 
             elif self.estado == "correo_abierto":
+                # Comprobar área del correo y botón 'Volver'
+                correo_box_check = pygame.Rect(150, 100, 500, 350)
+
+                # Si se hace click dentro del área de texto del correo, completar el texto animado (solo si aún está animándose)
+                text_area = pygame.Rect(correo_box_check.x + 10, correo_box_check.y + 20,
+                                        correo_box_check.width - 20, correo_box_check.height - 60)
+                if text_area.collidepoint(mx, my):
+                    if len(self.texto_actual) < len(self.texto_completo):
+                        # Completar inmediatamente el texto animado
+                        self.texto_actual = self.texto_completo
+                        return
+
+                # Botón 'Volver'
+                bx = correo_box_check.x + 10
+                by = correo_box_check.y + correo_box_check.height - self.boton_volver_size[1] - 10
+                boton_volver_rect = pygame.Rect(bx, by, self.boton_volver_size[0], self.boton_volver_size[1])
+                if boton_volver_rect.collidepoint(mx, my):
+                    self.siguiente_correo()
+                    return
+
                 for boton in self.botones_accion:
                     if boton["rect"].collidepoint(mx, my):
                         if boton["accion"] in ["eliminar", "reportar"]:
@@ -591,8 +925,8 @@ class Level1Screen(BaseLevelScreen):
     def update(self, dt):
         self.hacker_sprite.update(dt)
 
-        # Actualizar texto animado
-        if self.estado == "correo_abierto" and len(self.texto_actual) < len(self.texto_completo):
+        # Actualizar texto animado (correo abierto o narrativa inicial)
+        if ((self.estado == "correo_abierto") or (self.show_narrative and self.estado == "narrativa_inicial")) and len(self.texto_actual) < len(self.texto_completo):
             self.tiempo_escritura += dt
             if self.tiempo_escritura >= self.velocidad_escritura:
                 self.tiempo_escritura = 0
@@ -649,8 +983,8 @@ class Level1Screen(BaseLevelScreen):
             pygame.draw.rect(surf, (20, 20, 40), box, border_radius=10)
             pygame.draw.rect(surf, (100, 100, 200), box, 2, border_radius=10)
 
-            line = self.narrative_lines[self.narrative_index]
-            wrapped_lines = self._wrap_text(line, self.font, box.width - 40)
+            # Mostrar narrativa con animación de texto (usar self.texto_actual)
+            wrapped_lines = self._wrap_text(self.texto_actual if self.texto_actual else self.narrative_lines[self.narrative_index], self.font, box.width - 40)
 
             y_offset = 20
             for wrapped in wrapped_lines:
@@ -679,6 +1013,16 @@ class Level1Screen(BaseLevelScreen):
 
             # Botones de acción
             mx, my = pygame.mouse.get_pos()
+
+            # Dibujar botón 'Volver' en la esquina inferior izquierda del cuadro de correo
+            bx = correo_box.x + 10
+            by = correo_box.y + correo_box.height - self.boton_volver_size[1] - 10
+            boton_volver_rect = pygame.Rect(bx, by, self.boton_volver_size[0], self.boton_volver_size[1])
+            color_volver = (180, 180, 180) if boton_volver_rect.collidepoint(mx, my) else (130, 130, 130)
+            pygame.draw.rect(surf, color_volver, boton_volver_rect, border_radius=4)
+            volver_txt = self.small_font.render("Volver", True, (0, 0, 0))
+            surf.blit(volver_txt, (boton_volver_rect.x + 8, boton_volver_rect.y + 6))
+
             for boton in self.botones_accion:
                 color = (200, 200, 100) if boton["rect"].collidepoint(mx, my) else (100, 100, 100)
                 pygame.draw.rect(surf, color, boton["rect"], border_radius=5)
@@ -753,9 +1097,29 @@ class Game:
         self.current = IntroVideoScreen(self, "intro.mp4")
         self.running = True
         self.font = pygame.font.SysFont("Consolas", 18)
+        # Fade transition state
+        self._next_screen = None
+        self._fade_time = 350  # ms total for each phase
+        self._fade_timer = 0
+        self._fade_phase = None  # None | 'out' | 'in'
+        self._fade_surface = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
 
     def change_screen(self, new_screen):
-        self.current = new_screen
+        # Start fade-out if already running, else switch immediately before intro
+        if self._fade_phase is None:
+            self._next_screen = new_screen
+            self._fade_phase = 'out'
+            self._fade_timer = 0
+        else:
+            # If a fade already ongoing, just set next screen
+            self._next_screen = new_screen
+
+    def set_screen(self, screen):
+        """Cambio inmediato, sin transición de fade global"""
+        self.current = screen
+        self._next_screen = None
+        self._fade_phase = None
+        self._fade_timer = 0
 
     def run(self):
         while self.running:
@@ -768,6 +1132,30 @@ class Game:
 
             self.current.update(dt)
             self.current.render(self.screen)
+
+            # Handle fade transitions
+            if self._fade_phase is not None:
+                self._fade_timer += dt
+                t = min(1.0, self._fade_timer / self._fade_time)
+                if self._fade_phase == 'out':
+                    # fade to black
+                    alpha = int(255 * t)
+                    self._fade_surface.fill((0, 0, 0, alpha))
+                    self.screen.blit(self._fade_surface, (0, 0))
+                    if t >= 1.0:
+                        # switch screen and start fade-in
+                        if self._next_screen is not None:
+                            self.current = self._next_screen
+                            self._next_screen = None
+                        self._fade_phase = 'in'
+                        self._fade_timer = 0
+                elif self._fade_phase == 'in':
+                    # from black to scene
+                    alpha = int(255 * (1.0 - t))
+                    self._fade_surface.fill((0, 0, 0, alpha))
+                    self.screen.blit(self._fade_surface, (0, 0))
+                    if t >= 1.0:
+                        self._fade_phase = None
 
             # Mostrar FPS
             fps_text = self.font.render(f"FPS: {int(self.clock.get_fps())}", True, (255, 255, 0))
