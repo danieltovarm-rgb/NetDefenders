@@ -24,31 +24,44 @@ class Screen(ABC):
 
 # --------- Utilidades visuales (Matrix Rain y Glitch Text) ----------
 class MatrixRain:
-    def __init__(self, width, height, font_name="Consolas", font_size=16, charset=None, column_density=1.0):
+    def __init__(self, width, height, font_name="Consolas", font_size=16, charset=None, column_density=1.0, font_path=None):
         self.w = width
         self.h = height
-        self.font = pygame.font.SysFont(font_name, font_size)
+        # prefer a provided TTF path, fallback to SysFont
+        try:
+            if font_path:
+                self.font = pygame.font.Font(font_path, font_size)
+            else:
+                self.font = pygame.font.SysFont(font_name, font_size)
+        except Exception:
+            self.font = pygame.font.SysFont(font_name, font_size)
         self.char_h = self.font.get_height()
         self.char_w = self.font.size("M")[0]
-        self.cols = max(1, self.w // self.char_w)
+        # columnas efectivas: permitir bajar densidad para hacerlo más sutil
+        base_cols = max(1, self.w // self.char_w)
+        density = max(0.2, min(1.0, column_density or 1.0))
+        self.cols = max(1, int(base_cols * density))
         self.charset = charset or list("01ABCDEFGHJKLMNPQRSTUVWXYZ1234567890")
         # pre-render glyphs in green and head brighter
         self.glyphs = {}
         for ch in self.charset:
-            surf = self.font.render(ch, True, (0, 200, 70))
-            head = self.font.render(ch, True, (170, 255, 170))
+            # tonos más oscuros y menos saturados para efecto en el fondo
+            surf = self.font.render(ch, True, (0, 110, 40))
+            head = self.font.render(ch, True, (120, 190, 120))
             self.glyphs[ch] = (surf, head)
 
         self.columns = []
         import random as _r
+        # espaciado uniforme entre columnas efectivas
+        spacing = self.w / self.cols
         for i in range(self.cols):
-            speed = _r.uniform(120, 220)
-            length = _r.randint(8, 18)
+            speed = _r.uniform(40, 90)  # más lento
+            length = _r.randint(8, 16)
             y = _r.uniform(-self.h, 0)
             # populate char sequence
             seq = [_r.choice(self.charset) for _ in range(length)]
             self.columns.append({
-                "x": i * self.char_w,
+                "x": int(i * spacing),
                 "y": y,
                 "speed": speed,
                 "len": length,
@@ -63,8 +76,8 @@ class MatrixRain:
                 # reset above the screen
                 import random as _r
                 col["y"] = _r.uniform(-self.h * 0.3, 0)
-                col["speed"] = _r.uniform(120, 220)
-                col["len"] = _r.randint(8, 18)
+                col["speed"] = _r.uniform(40, 90)  # mantener lento al reiniciar
+                col["len"] = _r.randint(8, 16)
                 col["seq"] = [_r.choice(self.charset) for _ in range(col["len"])]
 
     def draw(self, surf, alpha=140):
@@ -80,7 +93,7 @@ class MatrixRain:
                 glyph, head = self.glyphs[ch]
                 g = head if i == 0 else glyph
                 # vary alpha along the trail
-                a = max(30, 200 - i * 12)
+                a = max(12, 120 - i * 10)  # más tenue
                 g.set_alpha(a)
                 overlay.blit(g, (x, y))
         overlay.set_alpha(alpha)
@@ -287,10 +300,19 @@ class BaseLevelScreen(Screen):
         self.narrative_index = 0
         self.show_narrative = True
 
-        # Fuentes básicas (esencial)
-        self.font = pygame.font.SysFont("Consolas", 28)
-        self.option_font = pygame.font.SysFont("Consolas", 20)
-        self.small_font = pygame.font.SysFont("Consolas", 16)
+        # Fuentes básicas (esencial) - preferir TTF del proyecto
+        try:
+            self.font = pygame.font.Font(self.game.font_path, 40)
+        except Exception:
+            self.font = pygame.font.SysFont("Consolas", 28)
+        try:
+            self.option_font = pygame.font.Font(self.game.font_path, 32)
+        except Exception:
+            self.option_font = pygame.font.SysFont("Consolas", 20)
+        try:
+            self.small_font = pygame.font.Font(self.game.font_path, 28)
+        except Exception:
+            self.small_font = pygame.font.SysFont("Consolas", 16)
 
     def _wrap_text(self, text, font, max_width):
         words = text.replace('\n', ' \n ').split(' ')  
@@ -341,8 +363,12 @@ class BaseLevelScreen(Screen):
 class MenuScreen(Screen):
     def __init__(self, game):
         super().__init__(game)
-        self.font = pygame.font.SysFont("Consolas", 40)
-        self.options = ["Jugar", "Salir"]
+        # use project's TTF font if available
+        try:
+            self.font = pygame.font.Font(self.game.font_path, 70)
+        except Exception:
+            self.font = pygame.font.SysFont("Consolas", 40)
+        self.options = ["JUGAR", "SALIR"]
         self.buttons = []  # (opt, txt, rect, anim)
         self.create_buttons()
         # Fondo del menú 
@@ -353,8 +379,13 @@ class MenuScreen(Screen):
             self.menu_background = None
         # reveal animation
         self._start_time = 0
-        # Matrix Rain background
-        self.matrix = MatrixRain(SCREEN_W, SCREEN_H, font_size=16)
+        # Matrix Rain background 
+        self.matrix = MatrixRain(
+            SCREEN_W, SCREEN_H,
+            font_size=12,  
+            column_density=0.5, 
+            font_path=getattr(self.game, 'font_path', None)
+        )
 
     def create_buttons(self):
         for i, opt in enumerate(self.options):
@@ -377,9 +408,9 @@ class MenuScreen(Screen):
             for opt, txt, rect, anim in self.buttons:
                 if rect.collidepoint(mx, my):
                     anim["scale"] = anim.get("press_scale", 0.95)  # click tap animation
-                    if opt == "Jugar":
+                    if opt == "JUGAR":
                         self.game.change_screen(LevelSelectScreen(self.game))
-                    elif opt == "Salir":
+                    elif opt == "SALIR":
                         pygame.quit();
                         sys.exit()
 
@@ -409,7 +440,7 @@ class MenuScreen(Screen):
         else:
             surf.fill((30, 30, 50))
         # Matrix rain overlay
-        self.matrix.draw(surf, alpha=130)
+        self.matrix.draw(surf, alpha=85)  # más oscuro/sutil
         title = self.font.render("NetDefenders", True, (255, 255, 255))
         draw_glitch_text_surf(surf, title, (SCREEN_W // 2, 100), scale=1.0, glitch_prob=0.12)
 
@@ -434,26 +465,60 @@ class MenuScreen(Screen):
 class LevelSelectScreen(Screen):
     def __init__(self, game):
         super().__init__(game)
-        self.font = pygame.font.SysFont("Consolas", 30)
+        try:
+            self.font = pygame.font.Font(self.game.font_path, 42)
+        except Exception:
+            self.font = pygame.font.SysFont("Consolas", 30)
         # Botones imagen para niveles
         self.level_buttons = []
         self.create_levels()
-        # Usar la misma imagen de fondo que el menú (si está disponible)
+        #imagen de fondo en la selección de niveles
         try:
-            self.background = pygame.image.load("assets/fondo_menu.png").convert()
+            self.background = pygame.image.load("assets/fondo_niveles 2.png").convert()
             self.background = pygame.transform.scale(self.background, (SCREEN_W, SCREEN_H))
         except Exception:
             self.background = None
-        # matrix rain
-        self.matrix = MatrixRain(SCREEN_W, SCREEN_H, font_size=16)
+        # matrix rain (más pequeño y sutil)
+        self.matrix = MatrixRain(
+            SCREEN_W, SCREEN_H,
+            font_size=12,
+            column_density=0.45,
+            font_path=getattr(self.game, 'font_path', None)
+        )
+        # Botón 'Volver' en esquina superior izquierda (imagen si existe)
+        try:
+            self.small_font = pygame.font.Font(self.game.font_path, 16)
+        except Exception:
+            self.small_font = pygame.font.SysFont("Consolas", 16)
+        # Fuente para la etiqueta 'Volver' (más grande y visible)
+        try:
+            self.back_label_font = pygame.font.Font(self.game.font_path, 40)
+        except Exception:
+            self.back_label_font = pygame.font.SysFont("Consolas", 22)
+        self.volver_image = None
+        try:
+            for p in ("assets/boton_volver final 2.png", "assets/volver_button.png"):
+                try:
+                    img = pygame.image.load(p).convert_alpha()
+                    img = pygame.transform.smoothscale(img, (48, 48))
+                    self.volver_image = img
+                    break
+                except Exception:
+                    continue
+        except Exception:
+            self.volver_image = None
+        if self.volver_image:
+            self.boton_volver_rect = self.volver_image.get_rect(topleft=(20, 20))
+        else:
+            self.boton_volver_rect = pygame.Rect(20, 20, 80, 30)
 
     def create_levels(self):
         # Crear tres botones imagen: nivel1, nivel2, nivel3
         # Mantener la proporción original 622x233 al escalar los botones
-        orig_w, orig_h = 622, 233
+        orig_w, orig_h = 689, 735
         aspect = orig_w / orig_h
         # Altura objetivo reducida para botones más pequeños
-        btn_h = 80
+        btn_h = 240
         btn_w = int(btn_h * aspect)  # ancho manteniendo proporción
 
         # Espacio entre centros de botones
@@ -463,13 +528,29 @@ class LevelSelectScreen(Screen):
 
         centers = [ (center_x - spacing, center_y), (center_x, center_y), (center_x + spacing, center_y) ]
 
-        image_paths = ["assets/boton_phishing.png", "assets/boton_malware.png", "assets/boton_ingsocial.png"]
         names = ["Nivel 1", "Nivel 2", "Nivel 3"]
-        enabled_flags = [True, False, False]
+        # Estado dinámico de Nivel 2
+        n2_unlocked = bool(self.game.unlocked_levels.get("Nivel 2", False))
+        enabled_flags = [True, n2_unlocked, False]
+        # Elegir imágenes; para Nivel 2 usar locked/unlocked con fallback
+        n2_img_primary = "assets/nivel2_unlocked.png" if n2_unlocked else "assets/nivel2_locked.png"
+        # Fallbacks conocidos del repo anterior
+        n2_img_fallback = "assets/malware_unlocked.png" if n2_unlocked else "assets/malware_locked.png"
+        image_paths = [
+            "assets/nivel1_unlocked final 3.png",
+            n2_img_primary,
+            "assets/nivel3_locked.png"
+        ]
 
         for i in range(3):
             cx, cy = centers[i]
-            rect = pygame.Rect(0, 0, btn_w, btn_h)
+            if i == 0:
+                size_w = int(btn_w * 1.05)  # ~6% wider
+                size_h = int(btn_h * 1.05)  # ~6% taller
+            else:
+                size_w = btn_w
+                size_h = btn_h
+            rect = pygame.Rect(0, 0, size_w, size_h)
             rect.center = (cx, cy)
             self.level_buttons.append({
                 "name": names[i],
@@ -478,7 +559,7 @@ class LevelSelectScreen(Screen):
                 "enabled": enabled_flags[i],
                 # animation fields
                 "base_image": None,
-                "base_size": (btn_w, btn_h),
+                "base_size": (size_w, size_h),
                 "scale": 0.85,
                 "hover_scale": 1.08,
                 "press_scale": 0.96,
@@ -489,16 +570,36 @@ class LevelSelectScreen(Screen):
 
         # precargar imágenes
         for btn in self.level_buttons:
-            try:
-                img = pygame.image.load(btn["image_path"]).convert_alpha()
-                img = pygame.transform.smoothscale(img, (btn["rect"].width, btn["rect"].height))
-                btn["base_image"] = img
-            except Exception:
-                btn["base_image"] = None
+            path = btn.get("image_path")
+            loaded = None
+            if btn.get("name") == "Nivel 2":
+                # Probar principal y luego fallback
+                for p in [path, n2_img_fallback]:
+                    if not p:
+                        continue
+                    try:
+                        img = pygame.image.load(p).convert_alpha()
+                        img = pygame.transform.smoothscale(img, (btn["rect"].width, btn["rect"].height))
+                        loaded = img
+                        break
+                    except Exception:
+                        continue
+            else:
+                try:
+                    img = pygame.image.load(path).convert_alpha()
+                    img = pygame.transform.smoothscale(img, (btn["rect"].width, btn["rect"].height))
+                    loaded = img
+                except Exception:
+                    loaded = None
+            btn["base_image"] = loaded
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
+            # Comprobar botón volver
+            if self.boton_volver_rect.collidepoint(mx, my):
+                self.game.change_screen(MenuScreen(self.game))
+                return
             for btn in self.level_buttons:
                 if btn["rect"].collidepoint(mx, my):
                     btn["scale"] = btn.get("press_scale", 0.96)  # click tap anim
@@ -535,7 +636,7 @@ class LevelSelectScreen(Screen):
             surf.blit(self.background, (0, 0))
         else:
             surf.fill((20, 50, 70))
-        self.matrix.draw(surf, alpha=130)
+        self.matrix.draw(surf, alpha=80)
         header = self.font.render("Selecciona un nivel (haz click)", True, (255, 255, 255))
         draw_glitch_text_surf(surf, header, (SCREEN_W // 2, 100), scale=1.0, glitch_prob=0.1)
 
@@ -564,6 +665,26 @@ class LevelSelectScreen(Screen):
                 pygame.draw.rect(surf, color, rect, border_radius=8)
                 txt = self.font.render(btn["name"], True, (0, 0, 0))
                 surf.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+
+        # Dibujar botón 'Volver' en esquina superior izquierda (imagen o fallback)
+        mx, my = pygame.mouse.get_pos()
+        if self.volver_image:
+            surf.blit(self.volver_image, self.boton_volver_rect.topleft)
+        else:
+            color_volver = (180, 180, 180) if self.boton_volver_rect.collidepoint(mx, my) else (130, 130, 130)
+            pygame.draw.rect(surf, color_volver, self.boton_volver_rect, border_radius=4)
+            volver_txt = self.small_font.render("Volver", True, (0, 0, 0))
+            surf.blit(volver_txt, (self.boton_volver_rect.x + 10, self.boton_volver_rect.y + 6))
+
+        # Etiqueta 'Volver' un poco a la derecha del botón
+        try:
+            # Color hex #81c7cf -> (129,199,207)
+            label = self.back_label_font.render("Volver", True, (129, 199, 207))
+            label_x = self.boton_volver_rect.right + 8
+            label_y = self.boton_volver_rect.centery - label.get_height() // 2
+            surf.blit(label, (label_x, label_y))
+        except Exception:
+            pass
 
 
 # --------- (NUEVA) Pantalla del Nivel 1 con Sistema de Correos ----------
@@ -634,6 +755,15 @@ class Level1Screen(BaseLevelScreen):
 
         # Tamaño del botón 'Volver' (la posición se calcula dinámicamente)
         self.boton_volver_size = (80, 30)
+
+    def _player_won(self):
+        # Ganó si el hacker llegó a 0 o si al finalizar tiene más vida
+        if self.hacker_logic.vida <= 0:
+            return True
+        if self.protagonista.vida <= 0:
+            return False
+        # En empate o fin por correos, gana si tiene más vida
+        return self.protagonista.vida > self.hacker_logic.vida
 
     def cargar_correos(self):
         return [
@@ -856,6 +986,9 @@ class Level1Screen(BaseLevelScreen):
                 return
 
             if self.estado == "fin_juego":
+                # Desbloquear Nivel 2 si ganó el jugador
+                if self._player_won():
+                    self.game.unlocked_levels["Nivel 2"] = True
                 self.game.change_screen(MenuScreen(self.game))
                 return
 
@@ -1096,7 +1229,18 @@ class Game:
         self.clock = pygame.time.Clock()
         self.current = IntroVideoScreen(self, "intro.mp4")
         self.running = True
-        self.font = pygame.font.SysFont("Consolas", 18)
+        # Estado de desbloqueo de niveles (memoria de sesión)
+        self.unlocked_levels = {
+            "Nivel 1": True,
+            "Nivel 2": False,
+            "Nivel 3": False,
+        }
+        # Ruta a la fuente TTF del proyecto (archivo 'texto.ttf' en la raíz del proyecto)
+        self.font_path = "texto.ttf"
+        try:
+            self.font = pygame.font.Font(self.font_path, 18)
+        except Exception:
+            self.font = pygame.font.SysFont("Consolas", 18)
         # Fade transition state
         self._next_screen = None
         self._fade_time = 350  # ms total for each phase
@@ -1157,9 +1301,10 @@ class Game:
                     if t >= 1.0:
                         self._fade_phase = None
 
-            # Mostrar FPS
+            # Mostrar FPS en esquina superior derecha
             fps_text = self.font.render(f"FPS: {int(self.clock.get_fps())}", True, (255, 255, 0))
-            self.screen.blit(fps_text, (10, 10))
+            fps_x = SCREEN_W - fps_text.get_width() - 10
+            self.screen.blit(fps_text, (fps_x, 10))
 
             pygame.display.flip()
 
