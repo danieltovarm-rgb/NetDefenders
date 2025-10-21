@@ -141,15 +141,23 @@ def truncate_ellipsis(text: str, font: pygame.font.Font, max_w: int, ellipsis: s
     return best
 
 def wrap_ellipsis(text: str, font: pygame.font.Font, max_w: int, max_h: int, line_spacing: int = 5) -> list:
-    """Envuelve el texto al ancho y lo recorta con '...' para que no supere el alto disponible.
-    Devuelve una lista de líneas renderizables dentro de (max_w x max_h).
+    """Envuelve el texto al ancho y lo recorta con '...' si max_h no es None.
+    Si max_h es None, devuelve todas las líneas envueltas sin límite de altura.
+    Devuelve una lista de líneas renderizables.
     """
     # Convertir saltos de línea en tokens para respetarlos
     words = text.replace('\n', ' \n ').split(' ')
     lines = []
     current = ""
     line_h = font.get_height()
-    max_lines = max(1, (max_h + line_spacing) // (line_h + line_spacing))
+    
+    # --- MODIFICACIÓN ---
+    # Si max_h es None, no hay límite de líneas
+    if max_h is not None:
+        max_lines = max(1, (max_h + line_spacing) // (line_h + line_spacing))
+    else:
+        max_lines = float('inf') # Infinitas líneas
+    # --- FIN MODIFICACIÓN ---
 
     for w in words:
         if w == '\n':
@@ -183,11 +191,18 @@ def wrap_ellipsis(text: str, font: pygame.font.Font, max_w: int, max_h: int, lin
     if len(lines) < max_lines and current:
         lines.append(current)
 
-    # Recorta última línea si se pasó del ancho y agrega '...'
-    if lines:
+    # --- MODIFICACIÓN ---
+    # Solo truncar si max_h fue especificado
+    if max_h is not None and lines:
         lines[-1] = truncate_ellipsis(lines[-1], font, max_w)
-    # Limita a la cantidad de líneas que caben
-    return lines[:max_lines]
+    
+    # --- (NUEVA CORRECCIÓN) ---
+    if max_h is None:
+        return lines # Devuelve la lista completa si no hay límite de altura
+    
+    # Limita a la cantidad de líneas que caben (esto solo se ejecuta si max_h NO es None)
+    return lines[:int(max_lines)]
+
 
 # --------- Clase para el video de inicio ----------
 class IntroVideoScreen(Screen):
@@ -462,7 +477,7 @@ class Inbox:
 
 
 class EmailPanel:
-    """Panel del correo abierto, con botones de imagen y logo del remitente."""
+    """Panel del correo abierto, con barra de scroll y botones de imagen."""
     def __init__(self, correo, font_text, font_buttons, hacker_rect_provider=None):
         self.correo = correo
         self.font_text = font_text
@@ -470,13 +485,13 @@ class EmailPanel:
         self._hacker_rect_provider = hacker_rect_provider
         self.rect = pygame.Rect(150, 100, 500, 350)
 
-        # tipo de escritura
-        self.texto_completo = f"De: {correo.remitente}\nAsunto: {correo.asunto}\n\n{correo.contenido}"
-        self.texto_actual = self.texto_completo[:1]
+        # --- (CORREGIDO) Solo el contenido va en el cuerpo ---
+        self.texto_completo = self.correo.contenido
+        self.texto_actual = self.texto_completo # Desactivar typewriter para el scroll
         self.tiempo_escritura = 0
-        self.velocidad_escritura = 30
+        self.velocidad_escritura = 30 
 
-        # botones por imagen (con fallback)
+        # botones
         self.btn_back = ImageButton((0, 0), (80, 30), label_text="Volver", font=font_text)
         self.btn_responder = ImageButton((0, 0), (160, 44),
             image_paths=["assets/btn_responder.png", "assets/btn_reply.png"], label_text="Responder", font=font_buttons)
@@ -486,7 +501,7 @@ class EmailPanel:
             image_paths=["assets/btn_reportar.png", "assets/btn_report.png"], label_text="Reportar", font=font_buttons)
 
         # flujo de razones
-        self.mode = "reading"  # reading | reasons
+        self.mode = "reading"
         self.razones_sel = []
         self.btn_razones = [
             {"rect": pygame.Rect(0, 0, 120, 30), "razon": "Logo", "texto": "Logo"},
@@ -496,90 +511,207 @@ class EmailPanel:
         self.btn_confirmar = pygame.Rect(0, 0, 120, 38)
         self._accion_pendiente = None
 
+        # --- (NUEVO) Estado de la barra de Scroll (en español) ---
+        self._area_texto_rect = pygame.Rect(0, 0, 0, 0)
+        self.desplazamiento_y = 0
+        self.alto_linea = self.font_text.get_height() + 5
+        self.lineas_envueltas_completas = []
+        self.alto_total_texto = 0
+        self.alto_visible_texto = 0
+        self.max_desplazamiento_y = 0
+        self.scrollbar_fondo_rect = None
+        self.scrollbar_manija_rect = None
+        self.necesita_scrollbar = False
+        self.esta_arrastrando = False
+        self.arrastre_inicio_y = 0
+        self.arrastre_inicio_manija_y = 0
+
+        self._calcular_layout() # Calcular layout y scroll
+
+    def _calcular_layout(self):
+        """Calcula el área de texto y la configuración de la barra de scroll."""
+        header_h = 24
+        logo = self.correo.load_logo(max_size=(64, 64))
+        used_logo_h = logo.get_height() if logo else 64
+        top_y = self.rect.y + 8 + header_h + 10 + used_logo_h + 14
+        
+        # Área de texto es más angosta para dar espacio al scrollbar
+        text_w = self.rect.w - 20 - 18 # 18px para scrollbar + padding
+        text_h = self.rect.bottom - 10 - top_y
+        self._area_texto_rect = pygame.Rect(self.rect.x + 10, top_y, text_w, text_h)
+
+        # Calcular scroll
+        self.alto_visible_texto = self._area_texto_rect.h
+        self.lineas_envueltas_completas = wrap_ellipsis(self.texto_completo, self.font_text, text_w, max_h=None) # Usar la función modificada
+        self.alto_total_texto = max(len(self.lineas_envueltas_completas) * self.alto_linea, self.alto_visible_texto)
+        self.necesita_scrollbar = self.alto_total_texto > self.alto_visible_texto
+
+        if self.necesita_scrollbar:
+            self.max_desplazamiento_y = self.alto_total_texto - self.alto_visible_texto
+            self.scrollbar_fondo_rect = pygame.Rect(self._area_texto_rect.right + 4, self._area_texto_rect.y, 15, self._area_texto_rect.h)
+            
+            handle_h = max(20, self.alto_visible_texto * (self.alto_visible_texto / self.alto_total_texto))
+            self.scrollbar_manija_rect = pygame.Rect(self.scrollbar_fondo_rect.x, self.scrollbar_fondo_rect.y, 15, handle_h)
+            self._actualizar_pos_manija() # Sincronizar posición
+
+    def _actualizar_pos_manija(self):
+        """Actualiza la posición Y de la manija del scrollbar basado en self.desplazamiento_y"""
+        if not self.necesita_scrollbar:
+            return
+        porcentaje_scroll = 0
+        if self.max_desplazamiento_y > 0:
+            porcentaje_scroll = self.desplazamiento_y / self.max_desplazamiento_y
+        
+        rango_y_manija = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
+        self.scrollbar_manija_rect.y = self.scrollbar_fondo_rect.y + (porcentaje_scroll * rango_y_manija)
+
     def update(self, dt):
-        if self.mode == "reading" and len(self.texto_actual) < len(self.texto_completo):
-            self.tiempo_escritura += dt
-            if self.tiempo_escritura >= self.velocidad_escritura:
-                self.tiempo_escritura = 0
-                self.texto_actual += self.texto_completo[len(self.texto_actual)]
+        # Lógica de arrastre del scroll
+        if self.esta_arrastrando:
+            mx, my = pygame.mouse.get_pos()
+            
+            # Movimiento relativo del mouse
+            dy = my - self.arrastre_inicio_y
+            
+            # Rango de movimiento de la manija
+            rango_y_manija = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
+            bg_y = self.scrollbar_fondo_rect.y
+
+            # Nueva posición de la manija
+            nueva_y_manija = self.arrastre_inicio_manija_y + dy
+            # Limitar a los bordes del scrollbar_fondo
+            nueva_y_manija = max(bg_y, min(nueva_y_manija, bg_y + rango_y_manija))
+            
+            # Calcular el porcentaje de scroll basado en la posición de la manija
+            porcentaje_scroll = 0
+            if rango_y_manija > 0:
+                porcentaje_scroll = (nueva_y_manija - bg_y) / rango_y_manija
+            
+            # Actualizar el desplazamiento_y (pixel offset del texto)
+            self.desplazamiento_y = porcentaje_scroll * self.max_desplazamiento_y
+            
+            self._actualizar_pos_manija() # Sincronizar la manija visualmente
 
     def handle_event(self, event):
-        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
-            return None
-        # completar el texto con click
-        # text area comienza debajo del header y del logo centrado
-        header_h = 24
-        logo_h = 64
-        top_y = self.rect.y + 8 + header_h + 10 + logo_h + 14
-        text_area = pygame.Rect(self.rect.x + 10, top_y, self.rect.w - 20, self.rect.h - (top_y - self.rect.y) - 60)
-        if text_area.collidepoint(event.pos) and len(self.texto_actual) < len(self.texto_completo):
-            self.texto_actual = self.texto_completo
-            return None
+        # --- (NUEVO) Manejo de Rueda del Mouse ---
+        if event.type == pygame.MOUSEWHEEL and self.necesita_scrollbar:
+             # Solo scrollear si el mouse está sobre el panel de texto
+            if self._area_texto_rect.collidepoint(pygame.mouse.get_pos()):
+                self.desplazamiento_y -= event.y * 30 # event.y es 1 o -1. 30 es velocidad
+                self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+                self._actualizar_pos_manija()
+                return None # Consumir el evento
 
-        if self.btn_back.handle_event(event):
-            return {"type": "back"}
-        if self.mode == "reading":
-            if self.btn_responder.handle_event(event):
-                return {"type": "accion", "accion": "responder"}
-            if self.btn_eliminar.handle_event(event):
-                self.mode = "reasons"; self._accion_pendiente = "eliminar"; return None
-            if self.btn_reportar.handle_event(event):
-                self.mode = "reasons"; self._accion_pendiente = "reportar"; return None
-        else:
-            for b in self.btn_razones:
-                if b["rect"].collidepoint(event.pos):
-                    r = b["razon"]
-                    if r in self.razones_sel:
-                        self.razones_sel.remove(r)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # --- (NUEVO) Manejo de Clic en Scrollbar ---
+            if self.necesita_scrollbar:
+                if self.scrollbar_manija_rect.collidepoint(event.pos):
+                    self.esta_arrastrando = True
+                    self.arrastre_inicio_y = event.pos[1]
+                    self.arrastre_inicio_manija_y = self.scrollbar_manija_rect.y
+                    return None # Consumir evento
+                elif self.scrollbar_fondo_rect.collidepoint(event.pos):
+                    # Clic en la barra (no en la manija) - Paginación
+                    if event.pos[1] < self.scrollbar_manija_rect.y:
+                        self.desplazamiento_y -= self.alto_visible_texto # Page Up
                     else:
-                        self.razones_sel.append(r)
-            if self.btn_confirmar.collidepoint(event.pos):
-                acc = self._accion_pendiente
-                self.mode = "reading"
-                return {"type": "reasons_confirm", "accion": acc, "razones": list(self.razones_sel)}
+                        self.desplazamiento_y += self.alto_visible_texto # Page Down
+                    self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+                    self._actualizar_pos_manija()
+                    return None # Consumir evento
+
+            # (Existente) Manejo de botones de acción
+            if self.btn_back.handle_event(event):
+                return {"type": "back"}
+            if self.mode == "reading":
+                if self.btn_responder.handle_event(event):
+                    return {"type": "accion", "accion": "responder"}
+                if self.btn_eliminar.handle_event(event):
+                    self.mode = "reasons"; self._accion_pendiente = "eliminar"; return None
+                if self.btn_reportar.handle_event(event):
+                    self.mode = "reasons"; self._accion_pendiente = "reportar"; return None
+            else:
+                for b in self.btn_razones:
+                    if b["rect"].collidepoint(event.pos):
+                        r = b["razon"]
+                        if r in self.razones_sel:
+                            self.razones_sel.remove(r)
+                        else:
+                            self.razones_sel.append(r)
+                if self.btn_confirmar.collidepoint(event.pos):
+                    acc = self._accion_pendiente
+                    self.mode = "reading"
+                    return {"type": "reasons_confirm", "accion": acc, "razones": list(self.razones_sel)}
+
+        # --- (NUEVO) Manejo de Soltar Clic ---
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.esta_arrastrando = False
+
         return None
 
     def render(self, surf):
         # panel
         pygame.draw.rect(surf, (30, 30, 50), self.rect, border_radius=10)
         pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=10)
-        # header con remitente
+        
+        # --- (CORREGIDO) Header ahora muestra el ASUNTO ---
         header_rect = pygame.Rect(self.rect.x + 8, self.rect.y + 8, self.rect.w - 16, 24)
         pygame.draw.rect(surf, (22, 22, 34), header_rect, border_radius=8)
-        remit = f"De: {self.correo.remitente}"
-        remit_txt = truncate_ellipsis(remit, self.font_text, header_rect.w - 12)
-        surf.blit(self.font_text.render(remit_txt, True, (220, 220, 220)), (header_rect.x + 6, header_rect.y + 3))
+        
+        subj_str = truncate_ellipsis(self.correo.asunto, self.font_text, header_rect.w - 12)
+        subj_surf = self.font_text.render(subj_str, True, (220, 220, 220))
+        
+        # Centrar el asunto
+        subj_x = header_rect.centerx - subj_surf.get_width() // 2
+        subj_y = header_rect.centery - subj_surf.get_height() // 2
+        surf.blit(subj_surf, (subj_x, subj_y))
+        # --- FIN CORRECCIÓN HEADER ---
 
         # logo centrado arriba
         logo = self.correo.load_logo(max_size=(64, 64))
         logo_y = header_rect.bottom + 10
         if logo:
             surf.blit(logo, (self.rect.centerx - logo.get_width() // 2, logo_y))
-            used_logo_h = logo.get_height()
         else:
-            # placeholder si no hay logo
             ph = pygame.Rect(self.rect.centerx - 32, logo_y, 64, 64)
             pygame.draw.rect(surf, (60, 70, 90), ph)
             pygame.draw.rect(surf, (220, 220, 235), ph, 2)
-            used_logo_h = 64
 
-        # área de texto y render con envoltura y clipping para no salir del panel
-        text_x = self.rect.x + 10
-        text_y = logo_y + used_logo_h + 14
-        text_w = self.rect.w - 20
-        text_h = self.rect.bottom - 10 - text_y  # deja 10px de margen inferior
+        # --- (CORREGIDO) Renderizado de Texto con Scroll y Clipping ---
+        text_x = self._area_texto_rect.x
+        text_y_start = self._area_texto_rect.y
+        text_h = self._area_texto_rect.h
+
         if text_h > 0:
-            lines = wrap_ellipsis(self.texto_actual, self.font_text, text_w, text_h, line_spacing=5)
-            # establecer clip para asegurar que no se dibuje fuera
+            # Establecer clip para asegurar que no se dibuje fuera
             prev_clip = surf.get_clip()
-            clip_rect = pygame.Rect(text_x, text_y, text_w, text_h)
+            clip_rect = self._area_texto_rect.copy() # Usar el rect del área de texto
             surf.set_clip(clip_rect)
-            y_pos = text_y
-            for line in lines:
+            
+            y_pos = text_y_start - self.desplazamiento_y # Aplicar offset de scroll
+            
+            for line in self.lineas_envueltas_completas:
+                # Optimización: no dibujar líneas que están completamente fuera de la vista
+                if y_pos + self.alto_linea < text_y_start:
+                    y_pos += self.alto_linea
+                    continue
+                if y_pos > text_y_start + text_h:
+                    break
+
                 t = self.font_text.render(line, True, (255, 255, 255))
                 surf.blit(t, (text_x, y_pos))
-                y_pos += t.get_height() + 5
-            surf.set_clip(prev_clip)
+                y_pos += self.alto_linea
+                
+            surf.set_clip(prev_clip) # Restaurar clip
+        
+        # --- (NUEVO) Renderizar Scrollbar ---
+        if self.necesita_scrollbar:
+            # Fondo de la barra
+            pygame.draw.rect(surf, (40, 40, 60), self.scrollbar_fondo_rect, border_radius=7)
+            # Manija (handle)
+            color_manija = (180, 180, 200) if self.esta_arrastrando else (120, 120, 150)
+            pygame.draw.rect(surf, color_manija, self.scrollbar_manija_rect, border_radius=7)
+        # --- FIN RENDER SCROLLBAR ---
 
         # layout botones
         bx = self.rect.x + 10
@@ -611,7 +743,6 @@ class EmailPanel:
             pygame.draw.rect(surf, (100, 200, 100), self.btn_confirmar, border_radius=5)
             s = self.font_buttons.render("Confirmar", True, (0, 0, 0))
             surf.blit(s, (self.btn_confirmar.centerx - s.get_width() // 2, self.btn_confirmar.centery - s.get_height() // 2))
-
 
 # --------- Clase Hacker (lógica) ----------
 class HackerLogic:
@@ -713,109 +844,6 @@ class BaseLevelScreen(Screen):
     @abstractmethod
     def render(self, surf):
         ...
-
-
-# --------- Pantalla Menú ----------
-class MenuScreen(Screen):
-    def __init__(self, game):
-        super().__init__(game)
-        # use project's TTF font if available
-        try:
-            self.font = pygame.font.Font(self.game.font_path, 70)
-        except Exception:
-            self.font = pygame.font.SysFont("Consolas", 40)
-        self.options = ["JUGAR", "SALIR"]
-        self.buttons = []  # (opt, txt, rect, anim)
-        self.create_buttons()
-        # Fondo del menú 
-        try:
-            self.menu_background = pygame.image.load("assets/fondo_menu.png").convert()
-            self.menu_background = pygame.transform.scale(self.menu_background, (SCREEN_W, SCREEN_H))
-        except Exception:
-            self.menu_background = None
-        # reveal animation
-        self._start_time = 0
-        # Matrix Rain background 
-        self.matrix = MatrixRain(
-            SCREEN_W, SCREEN_H,
-            font_size=12,  
-            column_density=0.5, 
-            font_path=getattr(self.game, 'font_path', None)
-        )
-
-    def create_buttons(self):
-        for i, opt in enumerate(self.options):
-            txt = self.font.render(opt, True, (255, 255, 255))
-            rect = txt.get_rect(center=(SCREEN_W // 2, 250 + i * 80))
-            anim = {
-                "scale": 0.8,
-                "target": 1.0,
-                "hover_scale": 1.08,
-                "press_scale": 0.95,
-                "speed": 8.0,
-                "reveal_delay": i * 120,
-                "revealed": False
-            }
-            self.buttons.append([opt, txt, rect, anim])
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mx, my = event.pos
-            for opt, txt, rect, anim in self.buttons:
-                if rect.collidepoint(mx, my):
-                    anim["scale"] = anim.get("press_scale", 0.95)  # click tap animation
-                    if opt == "JUGAR":
-                        self.game.change_screen(LevelSelectScreen(self.game))
-                    elif opt == "SALIR":
-                        pygame.quit();
-                        sys.exit()
-
-    def update(self, dt):
-        # lazy start timer (could be time since screen created)
-        self._start_time += dt
-        self.matrix.update(dt)
-        mx, my = pygame.mouse.get_pos()
-        for i in range(len(self.buttons)):
-            opt, txt, rect, anim = self.buttons[i]
-            # reveal
-            if not anim["revealed"] and self._start_time >= anim["reveal_delay"]:
-                anim["revealed"] = True
-                anim["scale"] = 0.8
-            if not anim["revealed"]:
-                continue
-            # hover target
-            target = anim["hover_scale"] if rect.collidepoint(mx, my) else 1.0
-            # interpolate
-            factor = min(1.0, anim.get("speed", 8.0) * dt / 1000.0)
-            anim["scale"] = anim["scale"] + (target - anim["scale"]) * factor
-
-    def render(self, surf):
-        # Dibujar fondo del menú si existe
-        if self.menu_background:
-            surf.blit(self.menu_background, (0, 0))
-        else:
-            surf.fill((30, 30, 50))
-        # Matrix rain overlay
-        self.matrix.draw(surf, alpha=85)  # más oscuro/sutil
-        title = self.font.render("NetDefenders", True, (255, 255, 255))
-        draw_glitch_text_surf(surf, title, (SCREEN_W // 2, 100), scale=1.0, glitch_prob=0.12)
-
-        mx, my = pygame.mouse.get_pos()
-        for opt, txt, rect, anim in self.buttons:
-            if not anim.get("revealed", True):
-                continue
-            scale = anim.get("scale", 1.0)
-            color = (255, 255, 100) if rect.collidepoint(mx, my) else (200, 200, 200)
-            txt = self.font.render(opt, True, color)
-            # scale text surface
-            tw, th = txt.get_size()
-            draw_w = int(tw * scale)
-            draw_h = int(th * scale)
-            txt_scaled = pygame.transform.smoothscale(txt, (draw_w, draw_h))
-            draw_x = rect.centerx - draw_w // 2
-            draw_y = rect.centery - draw_h // 2
-            surf.blit(txt_scaled, (draw_x, draw_y))
-
 
 # --------- Pantalla Selección de Nivel ----------
 class LevelSelectScreen(Screen):
@@ -1042,16 +1070,120 @@ class LevelSelectScreen(Screen):
         except Exception:
             pass
 
+# --------- Pantalla Menú ----------
+class MenuScreen(Screen):
+    def __init__(self, game):
+        super().__init__(game)
+        # use project's TTF font if available
+        try:
+            self.font = pygame.font.Font(self.game.font_path, 70)
+        except Exception:
+            self.font = pygame.font.SysFont("Consolas", 40)
+        self.options = ["JUGAR", "SALIR"]
+        self.buttons = []  # (opt, txt, rect, anim)
+        self.create_buttons()
+        # Fondo del menú 
+        try:
+            self.menu_background = pygame.image.load("assets/fondo_menu.png").convert()
+            self.menu_background = pygame.transform.scale(self.menu_background, (SCREEN_W, SCREEN_H))
+        except Exception:
+            self.menu_background = None
+        # reveal animation
+        self._start_time = 0
+        # Matrix Rain background 
+        self.matrix = MatrixRain(
+            SCREEN_W, SCREEN_H,
+            font_size=12,  
+            column_density=0.5, 
+            font_path=getattr(self.game, 'font_path', None)
+        )
+
+    def create_buttons(self):
+        for i, opt in enumerate(self.options):
+            txt = self.font.render(opt, True, (255, 255, 255))
+            rect = txt.get_rect(center=(SCREEN_W // 2, 250 + i * 80))
+            anim = {
+                "scale": 0.8,
+                "target": 1.0,
+                "hover_scale": 1.08,
+                "press_scale": 0.95,
+                "speed": 8.0,
+                "reveal_delay": i * 120,
+                "revealed": False
+            }
+            self.buttons.append([opt, txt, rect, anim])
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            for opt, txt, rect, anim in self.buttons:
+                if rect.collidepoint(mx, my):
+                    anim["scale"] = anim.get("press_scale", 0.95)  # click tap animation
+                    if opt == "JUGAR":
+                        self.game.change_screen(LevelSelectScreen(self.game))
+                    elif opt == "SALIR":
+                        pygame.quit();
+                        sys.exit()
+
+    def update(self, dt):
+        # lazy start timer (could be time since screen created)
+        self._start_time += dt
+        self.matrix.update(dt)
+        mx, my = pygame.mouse.get_pos()
+        for i in range(len(self.buttons)):
+            opt, txt, rect, anim = self.buttons[i]
+            # reveal
+            if not anim["revealed"] and self._start_time >= anim["reveal_delay"]:
+                anim["revealed"] = True
+                anim["scale"] = 0.8
+            if not anim["revealed"]:
+                continue
+            # hover target
+            target = anim["hover_scale"] if rect.collidepoint(mx, my) else 1.0
+            # interpolate
+            factor = min(1.0, anim.get("speed", 8.0) * dt / 1000.0)
+            anim["scale"] = anim["scale"] + (target - anim["scale"]) * factor
+
+    def render(self, surf):
+        # Dibujar fondo del menú si existe
+        if self.menu_background:
+            surf.blit(self.menu_background, (0, 0))
+        else:
+            surf.fill((30, 30, 50))
+        # Matrix rain overlay
+        self.matrix.draw(surf, alpha=85)  # más oscuro/sutil
+        title = self.font.render("NetDefenders", True, (255, 255, 255))
+        draw_glitch_text_surf(surf, title, (SCREEN_W // 2, 100), scale=1.0, glitch_prob=0.12)
+
+        mx, my = pygame.mouse.get_pos()
+        for opt, txt, rect, anim in self.buttons:
+            if not anim.get("revealed", True):
+                continue
+            scale = anim.get("scale", 1.0)
+            color = (255, 255, 100) if rect.collidepoint(mx, my) else (200, 200, 200)
+            txt = self.font.render(opt, True, color)
+            # scale text surface
+            tw, th = txt.get_size()
+            draw_w = int(tw * scale)
+            draw_h = int(th * scale)
+            txt_scaled = pygame.transform.smoothscale(txt, (draw_w, draw_h))
+            draw_x = rect.centerx - draw_w // 2
+            draw_y = rect.centery - draw_h // 2
+            surf.blit(txt_scaled, (draw_x, draw_y))
+
 
 # --------- (NUEVA) Pantalla del Nivel 1 con Sistema de Correos ----------
 class Level1Screen(BaseLevelScreen):
     def __init__(self, game):
-        # Narrativa inicial del tutor
+        # --- NARRATIVA DEL TUTOR MEJORADA ---
         narrative_lines = [
-            "Tutor: ¡Ten cuidado con los correos sospechosos!",
-            "Algunos correos buscan engañarte para obtener tu dinero o contraseñas.",
-            "Debes identificar cuáles son legítimos y cuáles son maliciosos.",
-            "Usa las opciones Responder, Eliminar o Reportar según corresponda."
+            "Tutor: Conectando a la Red de Simulación... ¿Listo, analista?",
+            "Tutor: Escenario: Eres el analista de seguridad principal de 'Synergy Corp'. Tu 'Integridad de Red' es tu vida.",
+            "Tutor: Detectamos un intruso (míralo). Está lanzando un ataque de phishing para robar credenciales y dañar los sistemas.",
+            "Tutor: Tu trabajo: Analiza la bandeja de entrada. Reporta lo malicioso para dañar al hacker. Responde o elimina lo legítimo.",
+            "Tutor: ¡Cuidado! Si respondes a un correo falso o reportas uno legítimo, ¡pierdes integridad de red!",
+            "Tutor: Revisa siempre 3 cosas: El **Dominio** (quién envía), el **Texto** (qué pide) y el **Logo** (si es auténtico).",
+            "Tutor: Soy tu 'Blue Team Lead' (Jefe de Defensa). Te guiaré si fallas. ¡Iniciando simulación... ya!"
         ]
         super().__init__(game, narrative_lines)
     
@@ -1070,7 +1202,18 @@ class Level1Screen(BaseLevelScreen):
         self.tutor_mensaje = ""
         self.tutor_timer = 0
         self.contador_tutor = 0
-        self.max_apariciones_tutor = 3
+        self.max_apariciones_tutor = 3 # Límite de ayudas del tutor
+
+        # --- BURLAS DEL HACKER (en español) ---
+        self.burla_hacker = ""
+        self.burla_hacker_timer = 0
+        self.lista_burlas = [
+            "¡Clic! Gracias por las llaves del reino. 🔑",
+            "Jaja, ¿paranoico? Estás bloqueando a tus compañeros.",
+            "Demasiado fácil. Tu 'firewall' mental tiene agujeros.",
+            "¡Ups! ¿Eso dolió? 💥",
+            "Sigue intentando, 'genio'."
+        ]
 
         # Sistema de correos
         self.correos = self.cargar_correos()
@@ -1086,7 +1229,7 @@ class Level1Screen(BaseLevelScreen):
         # proveedor de rect del hacker para EmailPanel
         self._get_hacker_rect = lambda: self.hacker_sprite.rect
 
-        # Texto animado
+        # Texto animado (solo para narrativa)
         self.texto_actual = ""
         self.texto_completo = ""
         self.tiempo_escritura = 0
@@ -1109,54 +1252,73 @@ class Level1Screen(BaseLevelScreen):
         return self.protagonista.vida > self.hacker_logic.vida
 
     def cargar_correos(self):
+        # --- PAQUETE DE CORREOS MEJORADO Y EXTENDIDO ---
+        # (Asegúrate de tener los logos en 'assets/logos/')
         return [
-            # CORREOS MALICIOSOS
-            Correo(
-                es_legitimo=False,
-                tipo_malicioso="dinero",
-                remitente="premios@loteria-falsa.com",
-                asunto="¡GANASTE $1,000,000! Reclama tu premio",
-                contenido="Felicidades, has sido seleccionado para recibir $1,000,000. Haz clic aquí y paga $50 de procesamiento para reclamar tu premio inmediatamente. ¡Oferta por tiempo limitado!",
-                razones_correctas=["Dominio", "Texto"],
-                logo_path="assets/logos/loteria.png"
-            ),
+            # MALICIOSO 1 (Falla: Dominio y Texto)
             Correo(
                 es_legitimo=False,
                 tipo_malicioso="contraseñas",
-                remitente="soporte@faceb00k-security.com",
-                asunto="Problema de seguridad en tu cuenta",
-                contenido="Hemos detectado acceso no autorizado a tu cuenta. Para protegerla, verifica tu identidad ingresando tu contraseña actual aquí. De lo contrario, tu cuenta será suspendida en 24 horas.",
-                razones_correctas=["Dominio", "Logo", "Texto"],
-                logo_path="assets/logos/facebook.png"
-            ),
-            Correo(
-                es_legitimo=False,
-                tipo_malicioso="suscripciones",
-                remitente="servicio@premium-gratis.com",
-                asunto="Servicio Premium por tiempo limitado",
-                contenido="Obtén 3 meses gratis de nuestro servicio premium. Solo ingresa tus datos de tarjeta para verificación. ¡No te cobraremos nada hasta después del periodo de prueba!",
+                remitente="soporte@microsft-office.com",
+                asunto="ALERTA DE SEGURIDAD: Su contraseña ha caducado",
+                contenido="Estimado usuario,\n\nDetectamos un inicio de sesión inusual en su cuenta de Microsoft desde una ubicación no reconocida. Como medida de precaución, hemos caducado su contraseña.\n\nPara evitar la pérdida de acceso permanente a sus archivos de OneDrive y Outlook, debe verificar su cuenta inmediatamente.\n\nHaga clic en el siguiente enlace para actualizar su contraseña:\n[Enlace a portal falso]\n\nSi no completa esta acción en las próximas 2 horas, su cuenta será suspendida de forma permanente según nuestros términos de servicio. Apreciamos su cooperación.\n\nGracias,\nEquipo de Soporte de Microsoft",
                 razones_correctas=["Dominio", "Texto"],
-                logo_path="assets/logos/premium.png"
+                logo_path="assets/logos/microsoft.png" # Usa el logo real para confundir
             ),
 
-            # CORREOS LEGÍTIMOS
+            # LEGÍTIMO 1 (Interno)
             Correo(
                 es_legitimo=True,
                 tipo_malicioso=None,
-                remitente="soporte@bancoreal.com",
-                asunto="Actualización de términos de servicio",
-                contenido="Estimado cliente, hemos actualizado nuestros términos de servicio. No se requiere acción de tu parte. Puedes revisar los cambios en nuestra página web oficial.",
+                remitente="rh@synergy-corp.com",
+                asunto="Recordatorio: Nuevas políticas de vacaciones",
+                contenido="Hola equipo,\n\nEste es un recordatorio amistoso de que las nuevas políticas de solicitud de vacaciones entrarán en vigor el próximo mes, como se discusitó en la reunión trimestral.\n\nEl cambio principal es que todas las solicitudes de más de 3 días deben enviarse con al menos 30 días de antelación.\n\nPueden revisar el documento completo (PDF) en el portal interno de RH. No es necesario que respondan a este correo.\n\nQue tengan un buen día.\n\nSaludos,\nEl equipo de Recursos Humanos",
                 razones_correctas=[],
-                logo_path="assets/logos/banco_real.png"
+                logo_path="assets/logos/synergy_corp_rh.png" # Logo legítimo de la empresa
             ),
+
+            # MALICIOSO 2 (Falla: Logo y Texto)
+            Correo(
+                es_legitimo=False,
+                tipo_malicioso="dinero",
+                remitente="notificaciones@ganadores-lotto.net",
+                asunto="¡Felicidades! Ha ganado $500,000",
+                contenido="¡Es su día de suerte! ¡Ha ganado la Lotería Internacional!\n\nSu dirección de correo electrónico fue seleccionada al azar de una base de datos global como el ganador de nuestro sorteo mensual. ¡Ha ganado $500,000 USD!\n\nPara reclamar su premio, solo debe cubrir una pequeña 'tasa de procesamiento y transferencia bancaria internacional' de $20. Este pago es requerido por las regulaciones financieras.\n\nHaga clic aquí para pagar la tasa y recibir su premio. La oferta caduca en 24 horas.\n\n¡Felicidades de nuevo!",
+                razones_correctas=["Logo", "Texto"],
+                logo_path="assets/logos/loteria_falsa.png" # Un logo que se vea poco profesional
+            ),
+
+            # LEGÍTIMO 2 (Externo)
             Correo(
                 es_legitimo=True,
                 tipo_malicioso=None,
-                remitente="notificaciones@red-social.com",
-                asunto="Nueva solicitud de amistad",
-                contenido="Tienes una nueva solicitud de amistad de un contacto conocido. Inicia sesión en la plataforma para aceptar o rechazar la solicitud.",
+                remitente="notificaciones@linkedin.com",
+                asunto="Tienes una nueva invitación para conectar",
+                contenido="Hola Analista,\n\nJuan Pérez, quien es Gerente de Ciberseguridad en la empresa 'CyberCore Dynamics', te ha enviado una invitación para conectar en LinkedIn.\n\nExpandir tu red profesional es una excelente forma de mantenerte al día con las tendencias de la industria.\n\nPor favor, inicia sesión de forma segura en el sitio web o la aplicación oficial de LinkedIn para ver el perfil de Juan y aceptar o rechazar la invitación.\n\nSaludos,\nEl equipo de LinkedIn",
                 razones_correctas=[],
-                logo_path="assets/logos/red_social.png"
+                logo_path="assets/logos/linkedin.png" # Logo legítimo
+            ),
+
+            # MALICIOSO 3 (Falla: Texto PURO) - El más difícil
+            Correo(
+                es_legitimo=False,
+                tipo_malicioso="contraseñas",
+                remitente="it-soporte@synergy-corp.com",
+                asunto="[ACCIÓN REQUERIDA] Migración de buzón de correo",
+                contenido="Hola empleado,\n\nDebido a una actualización crítica de seguridad, estamos migrando todos los buzones al nuevo servidor en la nube (Exchange vNext) esta noche a las 2:00 AM.\n\nPara asegurar que sus correos, contactos y calendario se sincronicen correctamente, necesitamos que valide sus credenciales en el portal de migración ANTES de esa hora.\n\nPor favor, inicie sesión en el portal de migración con su correo y contraseña habituales:\n[Enlace a portal de phishing]\n\nSi no completa esta validación, su buzón podría corromperse y perdería sus datos. Entendemos que esto es urgente, pero es necesario para proteger la red.\n\nGracias,\nDepartamento de IT.",
+                razones_correctas=["Texto"],
+                logo_path="assets/logos/synergy_corp_it.png" # Logo legítimo de la empresa
+            ),
+
+            # MALICIOSO 4 (Spear Phishing del Hacker) - Correo final
+            Correo(
+                es_legitimo=False,
+                tipo_malicioso="spear_phishing",
+                remitente="unknown_user@192.168.1.10", # Una IP como remitente
+                asunto="Te estoy viendo...",
+                contenido="Lindo simulador, 'analista'.\n\nHas estado fastidioso reportando mis correos. Pero todos cometen un error...\n\n¿Estás seguro de que ese correo de 'RH' era realmente de RH? ¿O el de 'IT'? Qué paranoia.\n\nSigue jugando a proteger tu red. Sigue haciendo clic en 'Reportar'.\n\nNos veremos en el mundo real. ;-)\n\n- BlackHat",
+                razones_correctas=["Dominio", "Texto"],
+                logo_path=None # Sin logo
             )
         ]
 
@@ -1185,9 +1347,10 @@ class Level1Screen(BaseLevelScreen):
 
     def _calcular_daño_por_tipo(self, tipo_malicioso):
         daños = {
-            "dinero": 2,
-            "contraseñas": 3,
-            "suscripciones": 1
+            "dinero": 5,
+            "contraseñas": 10,
+            "suscripciones": 3,
+            "spear_phishing": 15 # Daño extra por el correo del hacker
         }
         return daños.get(tipo_malicioso, 0)
 
@@ -1220,10 +1383,13 @@ class Level1Screen(BaseLevelScreen):
     def procesar_respuesta_completa(self, accion, razones_seleccionadas=None):
         correo = self.correo_abierto
         resultado = self.procesar_accion_correo(accion, correo)
+        
+        hubo_error_accion = False
 
         # Aplicar daño base de la acción
         if resultado["daño_jugador"] > 0:
             self.protagonista.recibir_daño(resultado["daño_jugador"])
+            hubo_error_accion = True
 
         if resultado["daño_hacker"] > 0:
             self.hacker_logic.vida = max(0, self.hacker_logic.vida - resultado["daño_hacker"])
@@ -1237,6 +1403,7 @@ class Level1Screen(BaseLevelScreen):
             # Aplicar daño por razones incorrectas
             if daño_razones > 0:
                 self.protagonista.recibir_daño(daño_razones)
+                hubo_error_accion = True # Error en razones también cuenta
 
             # Aplicar bonus al hacker por razones correctas
             if bonus_hacker > 0:
@@ -1244,9 +1411,11 @@ class Level1Screen(BaseLevelScreen):
 
         self.mostrar_feedback_completo(resultado, daño_razones, bonus_hacker, razones_seleccionadas)
 
-        if not resultado["correcto"] or daño_razones > 0:
+        # --- GESTIÓN DE TUTOR Y BURLAS ---
+        if hubo_error_accion:
             self.mostrar_tutor_si_corresponde(correo, accion, razones_seleccionadas)
-
+            self.mostrar_burla_hacker(resultado) # Mostrar burla si hubo error
+        
         correo.procesado = True
         correo.visible = False
         self.siguiente_correo()
@@ -1259,10 +1428,10 @@ class Level1Screen(BaseLevelScreen):
                 mensajes.append(f"¡Bien! Dañaste al hacker en {resultado['daño_hacker']} puntos")
         else:
             if resultado["daño_jugador"] > 0:
-                mensajes.append(f"Error: Perdiste {resultado['daño_jugador']} puntos de vida")
+                mensajes.append(f"Error: Perdiste {resultado['daño_jugador']} puntos de integridad")
 
         if daño_razones > 0:
-            mensajes.append(f"Razones incorrectas: -{daño_razones} vida")
+            mensajes.append(f"Razones incorrectas: -{daño_razones} integridad")
 
         if bonus_hacker > 0:
             mensajes.append(f"Razones correctas: -{bonus_hacker} al hacker")
@@ -1274,26 +1443,45 @@ class Level1Screen(BaseLevelScreen):
             self.contador_tutor += 1
             self.tutor_visible = True
             self.tutor_mensaje = self.obtener_mensaje_tutor(correo, accion, razones_seleccionadas)
-            self.tutor_timer = 0
+            self.tutor_timer = 0 # Reinicia timer para 3 segundos
+
+    def mostrar_burla_hacker(self, resultado_accion):
+        if resultado_accion["correcto"]: # No mostrar burla si acertó
+            return
+            
+        import random
+        # Elegir burla específica si es posible
+        if resultado_accion.get("accion") == "reportar" and self.correo_abierto.es_legitimo:
+             self.burla_hacker = "Jaja, ¿paranoico? Estás bloqueando a tus compañeros."
+        elif resultado_accion.get("accion") == "responder" and not self.correo_abierto.es_legitimo:
+             self.burla_hacker = "¡Clic! Gracias por las llaves del reino. 🔑"
+        else:
+             self.burla_hacker = random.choice(self.lista_burlas)
+        
+        self.burla_hacker_timer = 3000 # Mostrar burla por 3 segundos
 
     def obtener_mensaje_tutor(self, correo, accion, razones_seleccionadas):
         if correo.es_legitimo and accion != "responder":
-            return "Recuerda: los correos legítimos deben responderse, no eliminarse ni reportarse"
+            return "¡Cuidado! Ese correo era legítimo. Reportarlos crea 'falsos positivos' y perdemos tiempo valioso."
 
         elif not correo.es_legitimo and accion == "responder":
-            if correo.tipo_malicioso == "dinero":
-                return "¡Cuidado! Las ofertas de dinero fácil suelen ser estafas"
-            elif correo.tipo_malicioso == "contraseñas":
-                return "Nunca compartas contraseñas por correo. Las empresas legítimas no las piden"
+            if correo.tipo_malicioso == "contraseñas":
+                return "¡Alerta Roja! Nunca entregues tus credenciales. Ningún admin te pedirá tu contraseña por correo. Fíjate en el dominio."
+            elif correo.tipo_malicioso == "dinero":
+                return "¡Error! Caíste en una estafa de 'pago por adelantado'. Nadie regala dinero así. ¡Debes reportarlo!"
             else:
-                return "Revisa siempre los términos antes de aceptar suscripciones"
+                return "Revisa siempre los términos antes de aceptar nada. Era una trampa."
 
-        elif razones_seleccionadas and not correo.es_legitimo:
+        elif razones_seleccionadas is not None and not correo.es_legitimo:
             razones_incorrectas = set(razones_seleccionadas) - set(correo.razones_correctas)
+            razones_faltantes = set(correo.razones_correctas) - set(razones_seleccionadas)
+            
             if razones_incorrectas:
-                return f"Revisa mejor las razones: {', '.join(razones_incorrectas)} no aplican aquí"
+                return f"Buen instinto, pero te equivocaste en el 'por qué'. '{list(razones_incorrectas)[0]}' no era la falla aquí."
+            if razones_faltantes:
+                 return f"Detectaste el correo, pero te faltó notar la falla en '{list(razones_faltantes)[0]}'. Los detalles importan."
 
-        return "Sigue practicando tu criterio de seguridad"
+        return "Sigue practicando tu criterio de seguridad."
 
     def siguiente_correo(self):
         self.correo_abierto = None
@@ -1307,88 +1495,108 @@ class Level1Screen(BaseLevelScreen):
 
     def iniciar_texto_animado(self, texto):
         self.texto_completo = texto
-        # Mostrar inmediatamente el primer carácter para evitar un frame en blanco
+        # Mostrar chaletazamente el primer carácter para evitar un frame en blanco
         self.texto_actual = texto[0] if texto else ""
         self.tiempo_escritura = 0
 
     def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mx, my = event.pos
+        # --- (MODIFICADO) El panel de email ahora maneja MOUSEWHEEL y otros ---
+        if self.estado == "correo_abierto" and self.email_panel:
+            # Pasar todos los eventos no-click al panel por si los necesita (rueda, soltar, mover)
+            if event.type == pygame.MOUSEWHEEL:
+                self.email_panel.handle_event(event) # Enviar evento de rueda
+                return # Consumir evento
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self.email_panel.handle_event(event) # Enviar evento de soltar
+                return # Consumir evento
+            if event.type == pygame.MOUSEMOTION:
+                self.email_panel.handle_event(event) # Enviar evento de mover (para drag)
+                return # Consumir evento
 
-            if self.estado == "narrativa_inicial":
-                # Si el texto aún se está animando, completarlo al hacer click (no avanzar todavía)
-                if len(self.texto_actual) < len(self.texto_completo):
-                    self.texto_actual = self.texto_completo
-                    return
+        # Procesar solo el clic izquierdo
+        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+            return
 
-                # Si el texto ya está completo, avanzar a la siguiente línea
-                if not self.avanzar_narrativa():
-                    self.estado = "esperando_correo"
-                else:
-                    # Iniciar animación para la siguiente línea
-                    self.iniciar_texto_animado(self.narrative_lines[self.narrative_index])
+        mx, my = event.pos
+
+        if self.estado == "narrativa_inicial":
+            # Si el texto aún se está animando, completarlo al hacer click (no avanzar todavía)
+            if len(self.texto_actual) < len(self.texto_completo):
+                self.texto_actual = self.texto_completo
                 return
 
-            if self.tutor_visible:
-                self.tutor_visible = False
-                return
+            # Si el texto ya está completo, avanzar a la siguiente línea
+            if not self.avanzar_narrativa():
+                self.estado = "esperando_correo"
+            else:
+                # Iniciar animación para la siguiente línea
+                self.iniciar_texto_animado(self.narrative_lines[self.narrative_index])
+            return
 
-            if self.estado == "fin_juego":
-                # Desbloquear Nivel 2 si ganó el jugador
-                if self._player_won():
-                    self.game.unlocked_levels["Nivel 2"] = True
-                self.game.change_screen(MenuScreen(self.game))
-                return
+        if self.tutor_visible:
+            self.tutor_visible = False
+            return
 
-            if self.estado == "esperando_correo":
-                # Delegar selección al Inbox OO (usa rect del hacker para layout seguro)
-                seleccionado = self.inbox.handle_event(event, hacker_rect=self.hacker_sprite.rect)
-                if seleccionado:
-                    self.correo_abierto = seleccionado
-                    self.estado = "correo_abierto"
-                    # Crear panel con botones de imagen
-                    self.email_panel = EmailPanel(self.correo_abierto, self.small_font, self.option_font, self._get_hacker_rect)
+        if self.estado == "fin_juego":
+            # Desbloquear Nivel 2 si ganó el jugador
+            if self._player_won():
+                self.game.unlocked_levels["Nivel 2"] = True
+            self.game.change_screen(MenuScreen(self.game))
+            return
 
-            elif self.estado == "correo_abierto":
-                # Delegar al EmailPanel OO
-                if self.email_panel:
-                    res = self.email_panel.handle_event(event)
-                    if res:
-                        if res.get("type") == "back":
-                            self.siguiente_correo()
-                            self.email_panel = None
-                            return
-                        if res.get("type") == "accion":
-                            # Acciones directas (p.ej. Responder)
-                            self.procesar_respuesta_completa(res.get("accion"))
-                            self.email_panel = None
-                            return
-                        if res.get("type") == "reasons_confirm":
-                            self.procesar_respuesta_completa(res.get("accion"), res.get("razones", []))
-                            self.email_panel = None
-                            return
+        if self.estado == "esperando_correo":
+            # Delegar selección al Inbox OO (usa rect del hacker para layout seguro)
+            seleccionado = self.inbox.handle_event(event, hacker_rect=self.hacker_sprite.rect)
+            if seleccionado:
+                self.correo_abierto = seleccionado
+                self.estado = "correo_abierto"
+                # Crear panel con botones de imagen
+                self.email_panel = EmailPanel(self.correo_abierto, self.small_font, self.option_font, self._get_hacker_rect)
 
-            # selección de razones gestionada por EmailPanel
+        elif self.estado == "correo_abierto":
+            # Delegar al EmailPanel OO
+            if self.email_panel:
+                res = self.email_panel.handle_event(event) # Enviar solo el MOUSEBUTTONDOWN
+                if res:
+                    if res.get("type") == "back":
+                        self.siguiente_correo()
+                        self.email_panel = None
+                        return
+                    if res.get("type") == "accion":
+                        # Acciones directas (p.ej. Responder)
+                        self.procesar_respuesta_completa(res.get("accion"))
+                        self.email_panel = None
+                        return
+                    if res.get("type") == "reasons_confirm":
+                        self.procesar_respuesta_completa(res.get("accion"), res.get("razones", []))
+                        self.email_panel = None
+                        return
 
     def update(self, dt):
         self.hacker_sprite.update(dt)
 
-        # Actualizar texto animado (solo narrativa inicial; el correo lo maneja EmailPanel)
+        # Actualizar texto animado (solo narrativa inicial)
         if (self.show_narrative and self.estado == "narrativa_inicial") and len(self.texto_actual) < len(self.texto_completo):
             self.tiempo_escritura += dt
             if self.tiempo_escritura >= self.velocidad_escritura:
                 self.tiempo_escritura = 0
                 self.texto_actual += self.texto_completo[len(self.texto_actual)]
 
-        # Actualizar email panel
+        # Actualizar email panel (ahora maneja drag)
         if self.estado == "correo_abierto" and self.email_panel:
             self.email_panel.update(dt)
 
         # Actualizar tutor
         if self.tutor_visible:
             self.tutor_timer += dt
-            if self.tutor_timer >= 3000:
+            if self.tutor_timer >= 5000: # Aumentado a 5 segundos
                 self.tutor_visible = False
+                
+        # Actualizar timer de burla del hacker
+        if self.burla_hacker_timer > 0:
+            self.burla_hacker_timer -= dt
+            if self.burla_hacker_timer <= 0:
+                self.burla_hacker = ""
 
     def render(self, surf):
         surf.fill((0, 0, 0))
@@ -1397,20 +1605,52 @@ class Level1Screen(BaseLevelScreen):
         self.protagonista_sprite.draw(surf)
         self.hacker_sprite.draw(surf)
 
+        # Dibujar burla del hacker
+        if self.burla_hacker_timer > 0 and self.burla_hacker:
+            # Caja de diálogo para el hacker
+            hacker_box_w = 280
+            hacker_box_h = 80
+            hacker_box_rect = pygame.Rect(
+                self.hacker_sprite.rect.left - hacker_box_w - 10, 
+                self.hacker_sprite.rect.top, 
+                hacker_box_w, 
+                hacker_box_h
+            )
+            # Asegurarse que no se salga por la izquierda
+            if hacker_box_rect.left < 10:
+                hacker_box_rect.left = 10
+                
+            pygame.draw.rect(surf, (50, 20, 20), hacker_box_rect, border_radius=10)
+            pygame.draw.rect(surf, (200, 100, 100), hacker_box_rect, 2, border_radius=10)
+            
+            # Envolver texto de la burla
+            wrapped_lines = self._wrap_text(self.burla_hacker, self.small_font, hacker_box_rect.width - 20)
+            y_offset = 10
+            for line in wrapped_lines:
+                taunt_text = self.small_font.render(line, True, (255, 200, 200))
+                surf.blit(taunt_text, (hacker_box_rect.x + 10, hacker_box_rect.y + y_offset))
+                y_offset += taunt_text.get_height() + 5
+
         # Dibujar tutor si está visible
         if self.tutor_visible:
             self.tutor_sprite.draw(surf)
             tutor_box = pygame.Rect(SCREEN_W - 600, SCREEN_H - 120, 380, 80)
             pygame.draw.rect(surf, (30, 30, 60), tutor_box, border_radius=10)
             pygame.draw.rect(surf, (100, 100, 200), tutor_box, 2, border_radius=10)
-            tutor_text = self.small_font.render(self.tutor_mensaje, True, (255, 255, 255))
-            surf.blit(tutor_text, (tutor_box.x + 10, tutor_box.y + 10))
+            # Envolver texto para que quepa en la caja
+            wrapped_lines = self._wrap_text(self.tutor_mensaje, self.small_font, tutor_box.width - 20) # -20 por el padding
+
+            y_offset = 10
+            for line in wrapped_lines:
+                tutor_text = self.small_font.render(line, True, (255, 255, 255))
+                surf.blit(tutor_text, (tutor_box.x + 10, tutor_box.y + y_offset))
+                y_offset += tutor_text.get_height() + 5 # Añadir espacio entre líneas
 
         # HUD: vidas
-        vida_txt = self.font.render(f"Vida Jugador: {self.protagonista.vida}", True, (200, 200, 200))
+        vida_txt = self.font.render(f"Integridad Red: {self.protagonista.vida}", True, (200, 200, 200))
         surf.blit(vida_txt, (20, 20))
-        hack_txt = self.font.render(f"Vida Hacker: {self.hacker_logic.vida}", True, (200, 200, 200))
-        surf.blit(hack_txt, (SCREEN_W - 250, 20))
+        hack_txt = self.font.render(f"Progreso Hacker: {self.hacker_logic.vida}", True, (200, 200, 200))
+        surf.blit(hack_txt, (SCREEN_W - 280, 20)) # Ajustado para el texto
 
         # Bandeja de entrada (solo cuando no hay narrativa ni correo abierto)
         if self.estado in ("esperando_correo",) and not self.show_narrative:
@@ -1423,11 +1663,13 @@ class Level1Screen(BaseLevelScreen):
             pygame.draw.rect(surf, (100, 100, 200), box, 2, border_radius=10)
 
             # Mostrar narrativa con animación de texto (usar self.texto_actual)
-            wrapped_lines = self._wrap_text(self.texto_actual if self.texto_actual else self.narrative_lines[self.narrative_index], self.font, box.width - 40)
+            # Usar self.texto_actual si no está vacío, si no, el texto completo (para el primer frame)
+            texto_a_mostrar = self.texto_actual if self.texto_actual else self.narrative_lines[self.narrative_index]
+            wrapped_lines = self._wrap_text(texto_a_mostrar, self.small_font, box.width - 40)
 
             y_offset = 20
             for wrapped in wrapped_lines:
-                text_surf = self.font.render(wrapped, True, (255, 255, 255))
+                text_surf = self.small_font.render(wrapped, True, (255, 255, 255))
                 surf.blit(text_surf, (box.x + 20, box.y + y_offset))
                 y_offset += text_surf.get_height() + 5
 
@@ -1447,31 +1689,38 @@ class Level1Screen(BaseLevelScreen):
             fin_box = pygame.Rect(200, 200, 400, 200)
             pygame.draw.rect(surf, (20, 20, 40), fin_box, border_radius=10)
             pygame.draw.rect(surf, (100, 100, 200), fin_box, 2, border_radius=10)
-
+            
+            mensaje = "" # Mensaje por defecto
+            
             if self.protagonista.vida <= 0:
-                mensaje = "¡Game Over! El hacker te ha derrotado."
+                mensaje = "¡Brecha de Seguridad! El hacker te ha derrotado."
             elif self.hacker_logic.vida <= 0:
-                mensaje = "¡Felicidades! Has derrotado al hacker."
+                mensaje = "¡Red Asegurada! Has derrotado al hacker."
             else:
                 # Todos los correos procesados - gana el que tenga más vida
                 if self.protagonista.vida > self.hacker_logic.vida:
-                    mensaje = "¡Felicidades! Has procesado todos los correos y ganado."
+                    mensaje = "¡Nivel Completado! Has procesado todo y ganado."
                 elif self.hacker_logic.vida > self.protagonista.vida:
-                    mensaje = "¡Game Over! El hacker tenía más vida al final."
+                    mensaje = "¡Brecha de Seguridad! El hacker ganó por puntos."
                 else:
-                    mensaje = "¡Empate! Ambos tienen la misma vida."
+                    mensaje = "¡Empate! La red está comprometida."
 
-            text = self.font.render(mensaje, True, (255, 255, 255))
-            surf.blit(text, (fin_box.centerx - text.get_width() // 2, fin_box.centery - 30))
+            # Envolver mensaje final
+            wrapped_lines = self._wrap_text(mensaje, self.option_font, fin_box.width - 40)
+            y_offset = fin_box.centery - (len(wrapped_lines) * self.option_font.get_height()) // 2 - 10
+            
+            for line in wrapped_lines:
+                text = self.option_font.render(line, True, (255, 255, 255))
+                surf.blit(text, (fin_box.centerx - text.get_width() // 2, y_offset))
+                y_offset += text.get_height() + 5
 
             continue_text = self.small_font.render("Haz clic para volver al menú", True, (200, 200, 200))
-            surf.blit(continue_text, (fin_box.centerx - continue_text.get_width() // 2, fin_box.centery + 30))
+            surf.blit(continue_text, (fin_box.centerx - continue_text.get_width() // 2, fin_box.bottom - 40))
 
         # Feedback
         if self.last_feedback:
             feedback_text = self.small_font.render(self.last_feedback, True, (255, 255, 100))
             surf.blit(feedback_text, (SCREEN_W // 2 - feedback_text.get_width() // 2, SCREEN_H - 40))
-
 
 # --------- Clase principal del juego ----------
 class Game:
