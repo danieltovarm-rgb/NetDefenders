@@ -2,6 +2,8 @@ import pygame, sys, random
 import numpy as np
 from abc import ABC, abstractmethod
 from moviepy import VideoFileClip
+# NUEVO: Importar sistema de estadísticas
+from stats_system import PlayerStats, ScoreManager, MistakeLog
 
 # Configuración
 SCREEN_W, SCREEN_H = 800, 600
@@ -405,6 +407,17 @@ class Inbox:
         self.header_h = 28
         self.row_h = self.font_row.get_height() * 2 + 10
         self.vgap = 8
+        # Scroll state
+        self.desplazamiento_y = 0
+        self.alto_visible = 0
+        self.alto_total = 0
+        self.max_desplazamiento_y = 0
+        self.necesita_scrollbar = False
+        self.scrollbar_fondo_rect = None
+        self.scrollbar_manija_rect = None
+        self.esta_arrastrando = False
+        self.arrastre_inicio_y = 0
+        self.arrastre_inicio_manija_y = 0
 
     def _calc_rects(self, hacker_rect=None):
         # header en top debajo del HUD
@@ -417,25 +430,120 @@ class Inbox:
         panel = pygame.Rect(20, header.bottom + 10, width, 320)
         return header, panel
 
-    def handle_event(self, event, hacker_rect=None):
-        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
-            return None
-        header, panel = self._calc_rects(hacker_rect)
-        if not panel.collidepoint(event.pos):
-            return None
-        # calcular clicks por fila
-        y = panel.y + 12
+    def _recalc_scroll(self, panel):
+        # Altura visible dentro del panel para filas (padding superior+inferior ~12)
+        self.alto_visible = max(0, panel.h - 24)
+        total = 0
         for c in self.correos:
             if not c.visible or c.procesado:
                 continue
-            row = pygame.Rect(panel.x + 10, y, panel.w - 20, self.row_h)
-            if row.collidepoint(event.pos):
+            total += self.row_h + self.vgap
+        if total > 0:
+            total -= self.vgap  # quitar el último espacio
+        self.alto_total = max(self.alto_visible, total)
+        self.necesita_scrollbar = self.alto_total > self.alto_visible
+        if self.necesita_scrollbar:
+            self.max_desplazamiento_y = self.alto_total - self.alto_visible
+            # Barra pegada al borde derecho interno del panel
+            bar_w = 14
+            self.scrollbar_fondo_rect = pygame.Rect(panel.right - bar_w - 6, panel.y + 8, bar_w, panel.h - 16)
+            # Altura de la manija proporcional
+            if self.alto_total > 0:
+                handle_h = max(24, int(self.alto_visible * (self.alto_visible / self.alto_total)))
+            else:
+                handle_h = self.scrollbar_fondo_rect.h
+            self.scrollbar_manija_rect = pygame.Rect(self.scrollbar_fondo_rect.x, self.scrollbar_fondo_rect.y, bar_w, handle_h)
+            # Clamp desplazamiento y actualizar manija
+            self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+            self._actualizar_pos_manija()
+        else:
+            self.desplazamiento_y = 0
+            self.max_desplazamiento_y = 0
+            self.scrollbar_fondo_rect = None
+            self.scrollbar_manija_rect = None
+
+    def _actualizar_pos_manija(self):
+        if not self.necesita_scrollbar or not self.scrollbar_fondo_rect or not self.scrollbar_manija_rect:
+            return
+        rango = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
+        if rango <= 0:
+            self.scrollbar_manija_rect.y = self.scrollbar_fondo_rect.y
+            return
+        porcentaje = 0 if self.max_desplazamiento_y == 0 else (self.desplazamiento_y / self.max_desplazamiento_y)
+        self.scrollbar_manija_rect.y = int(self.scrollbar_fondo_rect.y + porcentaje * rango)
+
+    def handle_event(self, event, hacker_rect=None):
+        header, panel = self._calc_rects(hacker_rect)
+        self._recalc_scroll(panel)
+
+        # Área de filas útil (excluye margen y scrollbar si existe)
+        scroll_w = 18 if self.necesita_scrollbar else 0
+        filas_area = pygame.Rect(panel.x + 8, panel.y + 8, panel.w - 16 - scroll_w, panel.h - 16)
+
+        # Rueda del mouse
+        if event.type == pygame.MOUSEWHEEL:
+            if filas_area.collidepoint(pygame.mouse.get_pos()) and self.necesita_scrollbar:
+                self.desplazamiento_y -= event.y * 40
+                self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+                self._actualizar_pos_manija()
+            return None
+
+        # Drag en scrollbar
+        if event.type == pygame.MOUSEMOTION and self.esta_arrastrando and self.necesita_scrollbar:
+            dy = event.pos[1] - self.arrastre_inicio_y
+            rango = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
+            bg_y = self.scrollbar_fondo_rect.y
+            nueva_y = max(bg_y, min(self.arrastre_inicio_manija_y + dy, bg_y + rango))
+            self.scrollbar_manija_rect.y = nueva_y
+            porcentaje = 0 if rango <= 0 else (nueva_y - bg_y) / rango
+            self.desplazamiento_y = porcentaje * self.max_desplazamiento_y
+            return None
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.esta_arrastrando = False
+            return None
+
+        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+            return None
+
+        # Clicks dentro del panel: primero scrollbar, luego filas
+        if self.necesita_scrollbar and self.scrollbar_fondo_rect:
+            if self.scrollbar_manija_rect.collidepoint(event.pos):
+                self.esta_arrastrando = True
+                self.arrastre_inicio_y = event.pos[1]
+                self.arrastre_inicio_manija_y = self.scrollbar_manija_rect.y
+                return None
+            if self.scrollbar_fondo_rect.collidepoint(event.pos):
+                # Page up/down
+                if event.pos[1] < self.scrollbar_manija_rect.y:
+                    self.desplazamiento_y -= self.alto_visible
+                else:
+                    self.desplazamiento_y += self.alto_visible
+                self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+                self._actualizar_pos_manija()
+                return None
+
+        if not panel.collidepoint(event.pos):
+            return None
+
+        # calcular clicks por fila (considerando desplazamiento)
+        y = panel.y + 12 - self.desplazamiento_y
+        row_right_limit = panel.right - (10 + (18 if self.necesita_scrollbar else 0))
+        row_x = panel.x + 10
+        row_w = max(10, row_right_limit - row_x)
+        for c in self.correos:
+            if not c.visible or c.procesado:
+                continue
+            row = pygame.Rect(row_x, int(y), row_w, self.row_h)
+            if row.collidepoint(event.pos) and filas_area.collidepoint(event.pos):
                 return c
             y += self.row_h + self.vgap
         return None
 
     def render(self, surf, hacker_rect=None):
         header, panel = self._calc_rects(hacker_rect)
+        # Recalcular scroll según tamaño actual
+        self._recalc_scroll(panel)
         # header pill
         pygame.draw.rect(surf, (24, 32, 40), header, border_radius=8)
         left_txt = self.font_row.render(">_ SYSTEM:  INBOX_ACCESS_LEVEL_1", True, (0, 255, 170))
@@ -446,13 +554,20 @@ class Inbox:
         # panel
         pygame.draw.rect(surf, (18, 22, 28), panel, border_radius=12)
         pygame.draw.rect(surf, (80, 80, 110), panel, 1, border_radius=12)
-        # filas
-        y = panel.y + 12
+        # filas (con clipping y desplazamiento)
+        scroll_w = 18 if self.necesita_scrollbar else 0
+        clip_rect = pygame.Rect(panel.x + 8, panel.y + 8, panel.w - 16 - scroll_w, panel.h - 16)
+        prev_clip = surf.get_clip()
+        surf.set_clip(clip_rect)
+        y = panel.y + 12 - self.desplazamiento_y
         mx, my = pygame.mouse.get_pos()
+        row_right_limit = panel.right - (10 + (scroll_w if self.necesita_scrollbar else 0))
+        row_x = panel.x + 10
+        row_w = max(10, row_right_limit - row_x)
         for c in self.correos:
             if not c.visible or c.procesado:
                 continue
-            row = pygame.Rect(panel.x + 10, y, panel.w - 20, self.row_h)
+            row = pygame.Rect(row_x, int(y), row_w, self.row_h)
             hovered = row.collidepoint(mx, my)
             bg = (35, 42, 64) if hovered else (28, 34, 48)
             pygame.draw.rect(surf, bg, row, border_radius=10)
@@ -474,6 +589,12 @@ class Inbox:
             pygame.draw.rect(surf, (40, 46, 66), box, border_radius=5)
             pygame.draw.rect(surf, (120, 130, 160), box, 1, border_radius=5)
             y += self.row_h + self.vgap
+        surf.set_clip(prev_clip)
+        # Scrollbar
+        if self.necesita_scrollbar and self.scrollbar_fondo_rect and self.scrollbar_manija_rect:
+            pygame.draw.rect(surf, (40, 40, 60), self.scrollbar_fondo_rect, border_radius=7)
+            color_manija = (180, 180, 200) if self.esta_arrastrando else (120, 120, 150)
+            pygame.draw.rect(surf, color_manija, self.scrollbar_manija_rect, border_radius=7)
 
 
 class EmailPanel:
@@ -671,11 +792,13 @@ class EmailPanel:
         logo = self.correo.load_logo(max_size=(64, 64))
         logo_y = header_rect.bottom + 10
         if logo:
-            surf.blit(logo, (self.rect.centerx - logo.get_width() // 2, logo_y))
+            logo_x = self.rect.centerx - logo.get_width() // 2
+            surf.blit(logo, (logo_x, logo_y))
+            logo_rect = pygame.Rect(logo_x, logo_y, logo.get_width(), logo.get_height())
         else:
-            ph = pygame.Rect(self.rect.centerx - 32, logo_y, 64, 64)
-            pygame.draw.rect(surf, (60, 70, 90), ph)
-            pygame.draw.rect(surf, (220, 220, 235), ph, 2)
+            logo_rect = pygame.Rect(self.rect.centerx - 32, logo_y, 64, 64)
+            pygame.draw.rect(surf, (60, 70, 90), logo_rect)
+            pygame.draw.rect(surf, (220, 220, 235), logo_rect, 2)
 
         # --- (CORREGIDO) Renderizado de Texto con Scroll y Clipping ---
         text_x = self._area_texto_rect.x
@@ -712,11 +835,12 @@ class EmailPanel:
             color_manija = (180, 180, 200) if self.esta_arrastrando else (120, 120, 150)
             pygame.draw.rect(surf, color_manija, self.scrollbar_manija_rect, border_radius=7)
         # --- FIN RENDER SCROLLBAR ---
-
-        # layout botones
-        bx = self.rect.x + 10
-        by = self.rect.y + self.rect.h - 30 - 10
-        self.btn_back.rect.update(bx, by, 80, 30)
+        # layout botones: colocar 'Volver' pegado al borde izquierdo del panel, a la altura del logo
+        btn_w, btn_h = 80, 30
+        left_pad = 10
+        bx = self.rect.x + left_pad
+        by = max(header_rect.bottom + 4, logo_rect.y)
+        self.btn_back.rect.update(bx, by, btn_w, btn_h)
         self.btn_back.draw(surf)
 
         base_y = self.rect.bottom + 12
@@ -1069,6 +1193,40 @@ class LevelSelectScreen(Screen):
             surf.blit(label, (label_x, label_y))
         except Exception:
             pass
+        
+        # NUEVO: Mostrar puntajes por nivel en la esquina inferior derecha
+        stats = self.game.player_stats
+        stats_x = SCREEN_W - 300
+        stats_y = SCREEN_H - 150
+        
+        # Fondo semitransparente para las estadísticas
+        stats_bg = pygame.Surface((280, 160), pygame.SRCALPHA)
+        stats_bg.fill((0, 0, 0, 150))
+        surf.blit(stats_bg, (stats_x, stats_y))
+        
+        # Título
+        title_text = self.small_font.render("MEJORES PUNTAJES", True, (255, 215, 0))
+        surf.blit(title_text, (stats_x + 10, stats_y + 10))
+        
+        # Mostrar puntajes por nivel
+        y_offset = 40
+        for level_num in [1, 2, 3]:
+            best_score = stats.get_level_best_score(level_num)
+            rank = stats.get_level_rank(level_num)
+            
+            # Color según disponibilidad del nivel
+            enabled = self.game.unlocked_levels.get(f"Nivel {level_num}", False)
+            color = (255, 255, 255) if enabled else (120, 120, 120)
+            
+            level_text = self.small_font.render(f"Nivel {level_num}:", True, color)
+            score_text = self.small_font.render(f"{best_score} pts", True, (100, 255, 100) if enabled else (80, 80, 80))
+            rank_text = self.small_font.render(f"[{rank}]", True, (255, 200, 100) if enabled else (80, 80, 80))
+            
+            surf.blit(level_text, (stats_x + 10, stats_y + y_offset))
+            surf.blit(score_text, (stats_x + 100, stats_y + y_offset))
+            surf.blit(rank_text, (stats_x + 200, stats_y + y_offset))
+            
+            y_offset += 30
 
 # --------- Pantalla Menú ----------
 class MenuScreen(Screen):
@@ -1186,6 +1344,10 @@ class Level1Screen(BaseLevelScreen):
             "Tutor: Soy tu 'Blue Team Lead' (Jefe de Defensa). Te guiaré si fallas. ¡Iniciando simulación... ya!"
         ]
         super().__init__(game, narrative_lines)
+        
+        # NUEVO: Configurar nivel 1 en sistema de estadísticas
+        self.game.player_stats.set_current_level(1)
+        self.game.player_stats.reset_session_stats()
     
         # Sprites de personajes en nuevas posiciones
         self.protagonista_sprite = ProtagonistaSprite(100, SCREEN_H - 100)
@@ -1386,19 +1548,33 @@ class Level1Screen(BaseLevelScreen):
         
         hubo_error_accion = False
 
-        # Aplicar daño base de la acción
-        if resultado["daño_jugador"] > 0:
-            self.protagonista.recibir_daño(resultado["daño_jugador"])
-            hubo_error_accion = True
-
-        if resultado["daño_hacker"] > 0:
-            self.hacker_logic.vida = max(0, self.hacker_logic.vida - resultado["daño_hacker"])
-
+        # Preparar detalles de errores para stats
+        mistake_details = {}
+        
         # Procesar razones si es eliminar o reportar
         daño_razones = 0
         bonus_hacker = 0
         if razones_seleccionadas is not None:
             daño_razones, bonus_hacker = self.procesar_razones(correo, razones_seleccionadas, accion)
+            
+            # Detectar errores en las razones marcadas
+            if correo.es_legitimo == False:  # Si era malicioso (phishing)
+                razones_correctas_set = set(correo.razones_correctas)
+                razones_seleccionadas_set = set(razones_seleccionadas)
+                
+                # Contar errores: opciones marcadas cuando NO debían (de más) + opciones NO marcadas cuando SÍ debían (de menos)
+                mistake_details["logo"] = ("Logo" in razones_seleccionadas_set and "Logo" not in razones_correctas_set) or \
+                                         ("Logo" not in razones_seleccionadas_set and "Logo" in razones_correctas_set)
+                mistake_details["dominio"] = ("Dominio" in razones_seleccionadas_set and "Dominio" not in razones_correctas_set) or \
+                                            ("Dominio" not in razones_seleccionadas_set and "Dominio" in razones_correctas_set)
+                mistake_details["texto"] = ("Texto" in razones_seleccionadas_set and "Texto" not in razones_correctas_set) or \
+                                          ("Texto" not in razones_seleccionadas_set and "Texto" in razones_correctas_set)
+            else:  # Si era legítimo pero lo marcaron como amenaza (falso positivo)
+                # Cualquier razón marcada en un correo legítimo es un error
+                razones_seleccionadas_set = set(razones_seleccionadas)
+                mistake_details["logo"] = "Logo" in razones_seleccionadas_set
+                mistake_details["dominio"] = "Dominio" in razones_seleccionadas_set
+                mistake_details["texto"] = "Texto" in razones_seleccionadas_set
 
             # Aplicar daño por razones incorrectas
             if daño_razones > 0:
@@ -1408,6 +1584,19 @@ class Level1Screen(BaseLevelScreen):
             # Aplicar bonus al hacker por razones correctas
             if bonus_hacker > 0:
                 self.hacker_logic.vida = max(0, self.hacker_logic.vida - bonus_hacker)
+
+        # NUEVO: Registrar en sistema de estadísticas automáticamente con detalles
+        es_amenaza = not correo.es_legitimo
+        respuesta_correcta = resultado["correcto"] and daño_razones == 0
+        self.game.player_stats.analyze_email(es_amenaza, respuesta_correcta, mistake_details)
+
+        # Aplicar daño base de la acción
+        if resultado["daño_jugador"] > 0:
+            self.protagonista.recibir_daño(resultado["daño_jugador"])
+            hubo_error_accion = True
+
+        if resultado["daño_hacker"] > 0:
+            self.hacker_logic.vida = max(0, self.hacker_logic.vida - resultado["daño_hacker"])
 
         self.mostrar_feedback_completo(resultado, daño_razones, bonus_hacker, razones_seleccionadas)
 
@@ -1492,6 +1681,8 @@ class Level1Screen(BaseLevelScreen):
         correos_pendientes = [c for c in self.correos if not c.procesado]
         if not correos_pendientes or self.protagonista.vida <= 0 or self.hacker_logic.vida <= 0:
             self.estado = "fin_juego"
+            # NUEVO: Completar nivel y guardar estadísticas
+            self.game.player_stats.complete_level()
 
     def iniciar_texto_animado(self, texto):
         self.texto_completo = texto
@@ -1512,6 +1703,13 @@ class Level1Screen(BaseLevelScreen):
             if event.type == pygame.MOUSEMOTION:
                 self.email_panel.handle_event(event) # Enviar evento de mover (para drag)
                 return # Consumir evento
+
+        # --- (NUEVO) La bandeja de entrada maneja scroll y drag del scrollbar ---
+        if self.estado == "esperando_correo" and not self.show_narrative:
+            if event.type in (pygame.MOUSEWHEEL, pygame.MOUSEMOTION) or (event.type == pygame.MOUSEBUTTONUP and event.button == 1):
+                # Forward para scroll/drag de scrollbar
+                self.inbox.handle_event(event, hacker_rect=self.hacker_sprite.rect)
+                # No hacer return aquí para permitir otros manejos si fuera necesario
 
         # Procesar solo el clic izquierdo
         if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
@@ -1731,6 +1929,9 @@ class Game:
         self.clock = pygame.time.Clock()
         self.current = IntroVideoScreen(self, "intro.mp4")
         self.running = True
+        # NUEVO: Sistema de estadísticas del jugador
+        self.player_stats = PlayerStats("Jugador1")
+        
         # Estado de desbloqueo de niveles (memoria de sesión)
         self.unlocked_levels = {
             "Nivel 1": True,
