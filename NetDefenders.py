@@ -288,30 +288,157 @@ class GlitchTransitionScreen(Screen):
 
 # --------- (NUEVA) Clase Correo ----------
 class Correo:
-    def __init__(self, es_legitimo, tipo_malicioso, contenido, remitente, asunto, razones_correctas, logo_path=None):
+    def __init__(self, es_legitimo, tipo_malicioso, contenido, remitente, asunto, razones_correctas, logo_path=None, inbox_icon_path=None, panel_logo_path=None):
         self.es_legitimo = es_legitimo
         self.tipo_malicioso = tipo_malicioso
         self.contenido = contenido
         self.remitente = remitente
         self.asunto = asunto
         self.razones_correctas = razones_correctas
-        self.logo_path = logo_path  # opcional: logo para mostrar en inbox y panel
+        # Compat: logo_path original se usa como fallback para ambos contextos
+        self.logo_path = logo_path  # legado / fallback
+        self._inbox_icon_path = inbox_icon_path
+        self._panel_logo_path = panel_logo_path
         self.procesado = False
         self.visible = True
 
-    def load_logo(self, max_size=(36, 36)):
-        """Carga el logo si existe, con fallback a None. Cache simple en atributo _logo_surface."""
-        if hasattr(self, "_logo_surface"):
-            return getattr(self, "_logo_surface")
+    def _load_scaled_image(self, path, max_size):
+        """Carga y escala una imagen desde path con cache por (path, w, h).
+        Escala forzada a (w,h) sin preservar aspecto (uso legacy)."""
+        try:
+            w, h = int(max_size[0]), int(max_size[1])
+        except Exception:
+            w, h = 36, 36
+        if path is None:
+            return None
+        if not hasattr(self, "_image_cache"):
+            self._image_cache = {}
+        key = (path, w, h)
+        if key in self._image_cache:
+            return self._image_cache[key]
         surf = None
-        if self.logo_path:
-            try:
-                img = pygame.image.load(self.logo_path).convert_alpha()
-                surf = pygame.transform.smoothscale(img, max_size)
-            except Exception:
-                surf = None
-        self._logo_surface = surf
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            surf = pygame.transform.smoothscale(img, (w, h))
+        except Exception:
+            surf = None
+        self._image_cache[key] = surf
         return surf
+
+    def _load_image_fit(self, path, max_size, crop_transparent=True, min_alpha=10):
+        """Carga una imagen, opcionalmente recorta transparencias y la ajusta a max_size preservando aspecto.
+        Cache por (path, w, h, 'fit', crop_transparent)."""
+        try:
+            max_w, max_h = int(max_size[0]), int(max_size[1])
+        except Exception:
+            max_w, max_h = 36, 36
+        if path is None:
+            return None
+        if not hasattr(self, "_image_cache"):
+            self._image_cache = {}
+        cache_key = (path, max_w, max_h, 'fit', bool(crop_transparent))
+        if cache_key in self._image_cache:
+            return self._image_cache[cache_key]
+
+        scaled = None
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            src = img
+            if crop_transparent:
+                # Recorta a los píxeles no transparentes
+                crop_rect = img.get_bounding_rect(min_alpha)
+                if crop_rect and crop_rect.w > 0 and crop_rect.h > 0:
+                    src = img.subsurface(crop_rect).copy()
+            sw, sh = src.get_width(), src.get_height()
+            if sw <= 0 or sh <= 0:
+                scaled = None
+            else:
+                scale = min(max_w / sw, max_h / sh) if max_w > 0 and max_h > 0 else 1.0
+                new_w = max(1, int(round(sw * scale)))
+                new_h = max(1, int(round(sh * scale)))
+                scaled = pygame.transform.smoothscale(src, (new_w, new_h))
+        except Exception:
+            scaled = None
+
+        self._image_cache[cache_key] = scaled
+        return scaled
+
+    def _load_image_fit_square(self, path, max_size, crop_transparent=False, min_alpha=10):
+        """Ajusta la imagen a un lienzo cuadrado (w,h) preservando aspecto (letterbox),
+        opcionalmente recortando transparencias antes de escalar. Devuelve una Surface cuadrada.
+        Cache por (path, w, h, 'fit_square', crop_transparent)."""
+        try:
+            max_w, max_h = int(max_size[0]), int(max_size[1])
+        except Exception:
+            max_w, max_h = 36, 36
+        if path is None:
+            return None
+        if not hasattr(self, "_image_cache"):
+            self._image_cache = {}
+        cache_key = (path, max_w, max_h, 'fit_square', bool(crop_transparent))
+        if cache_key in self._image_cache:
+            return self._image_cache[cache_key]
+
+        result = None
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            src = img
+            if crop_transparent:
+                crop_rect = img.get_bounding_rect(min_alpha)
+                if crop_rect and crop_rect.w > 0 and crop_rect.h > 0:
+                    src = img.subsurface(crop_rect).copy()
+            sw, sh = src.get_width(), src.get_height()
+            if sw <= 0 or sh <= 0:
+                result = None
+            else:
+                scale = min(max_w / sw, max_h / sh) if max_w > 0 and max_h > 0 else 1.0
+                new_w = max(1, int(round(sw * scale)))
+                new_h = max(1, int(round(sh * scale)))
+                scaled = pygame.transform.smoothscale(src, (new_w, new_h))
+                # Componer sobre lienzo cuadrado
+                canvas = pygame.Surface((max_w, max_h), pygame.SRCALPHA)
+                off_x = (max_w - new_w) // 2
+                off_y = (max_h - new_h) // 2
+                canvas.blit(scaled, (off_x, off_y))
+                result = canvas
+        except Exception:
+            result = None
+
+        self._image_cache[cache_key] = result
+        return result
+
+    def load_logo(self, max_size=(36, 36)):
+        """Logo del panel (dentro del correo).
+        Ajusta la imagen a un lienzo cuadrado del tamaño pedido, recortando transparencias
+        para que el objeto se vea más grande sin deformar (letterbox).
+        Usa panel_logo_path o logo_path (fallback)."""
+        path = self._panel_logo_path or self.logo_path
+        return self._load_image_fit_square(path, max_size, crop_transparent=True)
+
+    def load_panel_logo(self, max_size=(64, 64)):
+        """Alias explícito para el logo del panel."""
+        return self.load_logo(max_size=max_size)
+    
+    def has_panel_logo(self) -> bool:
+        """Indica si hay ruta de logo definida para el panel (sin considerar fallas de carga)."""
+        return bool(self._panel_logo_path or self.logo_path)
+
+    def load_inbox_icon(self, max_size=(36, 36)):
+        """Icono para la lista de correos (inbox). Usa inbox_icon_path o logo_path como fallback.
+        Escala legacy (no preserva aspecto)."""
+        path = self._inbox_icon_path or self.logo_path
+        return self._load_scaled_image(path, max_size)
+
+    def load_inbox_icon_fit(self, max_size=(36, 36)):
+        """Icono para inbox que recorta transparencia y preserva aspecto al ajustar a max_size."""
+        path = self._inbox_icon_path or self.logo_path
+        return self._load_image_fit(path, max_size, crop_transparent=True)
+
+    def load_inbox_icon_square(self, max_size=(36, 36), crop_transparent=False):
+        """Devuelve un icono cuadrado del tamaño pedido, preservando aspecto (letterbox) y sin deformación.
+        Si crop_transparent=True, primero recorta zonas transparentes antes de ajustar."""
+        path = self._inbox_icon_path or self.logo_path
+        return self._load_image_fit_square(path, max_size, crop_transparent=crop_transparent)
 
     @property
     def dominio(self):
@@ -575,7 +702,12 @@ class Inbox:
             # padding interno
             pad_x = 10
             pad_y = 6
-            inner_w = row.w - pad_x * 2 - 30  # 30 para la casilla derecha
+            # reservar espacio para el cuadro de icono a la derecha (logo por correo)
+            # hacerlo más grande: altura casi toda la fila y cuadrado 1:1
+            right_box_h = max(20, row.h - 6)
+            right_box_w = right_box_h
+            right_box_gap = 8
+            inner_w = row.w - pad_x * 2 - (right_box_w + right_box_gap)
             # asunto en color
             subj_color = (120, 255, 140) if c.es_legitimo else (255, 120, 120)
             subj = truncate_ellipsis(c.asunto, self.font_row, inner_w)
@@ -584,10 +716,16 @@ class Inbox:
             dom = truncate_ellipsis(c.remitente, self.font_row, inner_w)
             dom_color = (200, 200, 200)
             surf.blit(self.font_row.render(dom, True, dom_color), (row.x + pad_x, row.y + pad_y + self.font_row.get_height() + 2))
-            # casilla a la derecha
-            box = pygame.Rect(row.right - 26, row.y + (row.h - 22) // 2, 22, 22)
-            pygame.draw.rect(surf, (40, 46, 66), box, border_radius=5)
-            pygame.draw.rect(surf, (120, 130, 160), box, 1, border_radius=5)
+            # icono a la derecha (logo por correo) con recorte y aspecto preservado
+            box_h = right_box_h
+            box = pygame.Rect(row.right - (right_box_w + 8), row.y + (row.h - box_h) // 2, right_box_w, box_h)
+            # 1:1 garantizado: surface cuadrada del tamaño del slot, sin deformación
+            # recorta transparencia para aprovechar más el área
+            logo = c.load_inbox_icon_square(max_size=(box_h - 4, box_h - 4), crop_transparent=True)
+            if logo:
+                lx = box.x + (box.w - logo.get_width()) // 2
+                ly = box.y + (box.h - logo.get_height()) // 2
+                surf.blit(logo, (lx, ly))
             y += self.row_h + self.vgap
         surf.set_clip(prev_clip)
         # Scrollbar
@@ -605,6 +743,9 @@ class EmailPanel:
         self.font_buttons = font_buttons
         self._hacker_rect_provider = hacker_rect_provider
         self.rect = pygame.Rect(150, 100, 500, 350)
+        # Tamaño del logo mostrado dentro del correo (no afecta iconos del inbox)
+        # Volver al slot original para mantener el layout.
+        self.panel_logo_size = (64, 64)
 
         # --- (CORREGIDO) Solo el contenido va en el cuerpo ---
         self.texto_completo = self.correo.contenido
@@ -652,9 +793,11 @@ class EmailPanel:
     def _calcular_layout(self):
         """Calcula el área de texto y la configuración de la barra de scroll."""
         header_h = 24
-        logo = self.correo.load_logo(max_size=(64, 64))
-        used_logo_h = logo.get_height() if logo else 64
-        top_y = self.rect.y + 8 + header_h + 10 + used_logo_h + 14
+        show_logo = self.correo.has_panel_logo()
+        logo = self.correo.load_logo(max_size=self.panel_logo_size) if show_logo else None
+        used_logo_h = logo.get_height() if logo else (self.panel_logo_size[1] if show_logo else 0)
+        add_after_header = (used_logo_h + 14) if show_logo else 0
+        top_y = self.rect.y + 8 + header_h + 10 + add_after_header
         
         # Área de texto es más angosta para dar espacio al scrollbar
         text_w = self.rect.w - 20 - 18 # 18px para scrollbar + padding
@@ -789,16 +932,22 @@ class EmailPanel:
         # --- FIN CORRECCIÓN HEADER ---
 
         # logo centrado arriba
-        logo = self.correo.load_logo(max_size=(64, 64))
+        show_logo = self.correo.has_panel_logo()
+        logo = self.correo.load_logo(max_size=self.panel_logo_size) if show_logo else None
         logo_y = header_rect.bottom + 10
         if logo:
             logo_x = self.rect.centerx - logo.get_width() // 2
             surf.blit(logo, (logo_x, logo_y))
             logo_rect = pygame.Rect(logo_x, logo_y, logo.get_width(), logo.get_height())
-        else:
-            logo_rect = pygame.Rect(self.rect.centerx - 32, logo_y, 64, 64)
+        elif show_logo:
+            # Placeholder si no hay logo, del mismo tamaño objetivo
+            ph_w, ph_h = self.panel_logo_size
+            logo_rect = pygame.Rect(self.rect.centerx - ph_w // 2, logo_y, ph_w, ph_h)
             pygame.draw.rect(surf, (60, 70, 90), logo_rect)
             pygame.draw.rect(surf, (220, 220, 235), logo_rect, 2)
+        else:
+            # No reservar espacio ni dibujar placeholder si no hay logo configurado
+            logo_rect = pygame.Rect(self.rect.centerx, logo_y, 0, 0)
 
         # --- (CORREGIDO) Renderizado de Texto con Scroll y Clipping ---
         text_x = self._area_texto_rect.x
@@ -1425,7 +1574,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="ALERTA DE SEGURIDAD: Su contraseña ha caducado",
                 contenido="Estimado usuario,\n\nDetectamos un inicio de sesión inusual en su cuenta de Microsoft desde una ubicación no reconocida. Como medida de precaución, hemos caducado su contraseña.\n\nPara evitar la pérdida de acceso permanente a sus archivos de OneDrive y Outlook, debe verificar su cuenta inmediatamente.\n\nHaga clic en el siguiente enlace para actualizar su contraseña:\n[Enlace a portal falso]\n\nSi no completa esta acción en las próximas 2 horas, su cuenta será suspendida de forma permanente según nuestros términos de servicio. Apreciamos su cooperación.\n\nGracias,\nEquipo de Soporte de Microsoft",
                 razones_correctas=["Dominio", "Texto"],
-                logo_path="assets/logos/microsoft.png" # Usa el logo real para confundir
+                logo_path="assets/logos/microsoft.png", # Usa el logo real para confundir
+                inbox_icon_path="assets/logos/microsoft_inbox.png",
             ),
 
             # LEGÍTIMO 1 (Interno)
@@ -1436,7 +1586,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="Recordatorio: Nuevas políticas de vacaciones",
                 contenido="Hola equipo,\n\nEste es un recordatorio amistoso de que las nuevas políticas de solicitud de vacaciones entrarán en vigor el próximo mes, como se discusitó en la reunión trimestral.\n\nEl cambio principal es que todas las solicitudes de más de 3 días deben enviarse con al menos 30 días de antelación.\n\nPueden revisar el documento completo (PDF) en el portal interno de RH. No es necesario que respondan a este correo.\n\nQue tengan un buen día.\n\nSaludos,\nEl equipo de Recursos Humanos",
                 razones_correctas=[],
-                logo_path="assets/logos/synergy_corp_rh.png" # Logo legítimo de la empresa
+                logo_path="assets/logos/synergy_corp.png", # Logo legítimo de la empresa
+                inbox_icon_path="assets/logos/synergy_corp_rh_inbox.png",
             ),
 
             # MALICIOSO 2 (Falla: Logo y Texto)
@@ -1447,7 +1598,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="¡Felicidades! Ha ganado $500,000",
                 contenido="¡Es su día de suerte! ¡Ha ganado la Lotería Internacional!\n\nSu dirección de correo electrónico fue seleccionada al azar de una base de datos global como el ganador de nuestro sorteo mensual. ¡Ha ganado $500,000 USD!\n\nPara reclamar su premio, solo debe cubrir una pequeña 'tasa de procesamiento y transferencia bancaria internacional' de $20. Este pago es requerido por las regulaciones financieras.\n\nHaga clic aquí para pagar la tasa y recibir su premio. La oferta caduca en 24 horas.\n\n¡Felicidades de nuevo!",
                 razones_correctas=["Logo", "Texto"],
-                logo_path="assets/logos/loteria_falsa.png" # Un logo que se vea poco profesional
+                logo_path="assets/logos/loteria_falsa.png", # Un logo que se vea poco profesional
+                inbox_icon_path="assets/logos/loteria_falsa_inbox.png",
             ),
 
             # LEGÍTIMO 2 (Externo)
@@ -1458,7 +1610,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="Tienes una nueva invitación para conectar",
                 contenido="Hola Analista,\n\nJuan Pérez, quien es Gerente de Ciberseguridad en la empresa 'CyberCore Dynamics', te ha enviado una invitación para conectar en LinkedIn.\n\nExpandir tu red profesional es una excelente forma de mantenerte al día con las tendencias de la industria.\n\nPor favor, inicia sesión de forma segura en el sitio web o la aplicación oficial de LinkedIn para ver el perfil de Juan y aceptar o rechazar la invitación.\n\nSaludos,\nEl equipo de LinkedIn",
                 razones_correctas=[],
-                logo_path="assets/logos/linkedin.png" # Logo legítimo
+                logo_path="assets/logos/linkedin.png", # Logo legítimo
+                inbox_icon_path="assets/logos/linkedin_inbox.png",
             ),
 
             # MALICIOSO 3 (Falla: Texto PURO) - El más difícil
@@ -1469,7 +1622,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="[ACCIÓN REQUERIDA] Migración de buzón de correo",
                 contenido="Hola empleado,\n\nDebido a una actualización crítica de seguridad, estamos migrando todos los buzones al nuevo servidor en la nube (Exchange vNext) esta noche a las 2:00 AM.\n\nPara asegurar que sus correos, contactos y calendario se sincronicen correctamente, necesitamos que valide sus credenciales en el portal de migración ANTES de esa hora.\n\nPor favor, inicie sesión en el portal de migración con su correo y contraseña habituales:\n[Enlace a portal de phishing]\n\nSi no completa esta validación, su buzón podría corromperse y perdería sus datos. Entendemos que esto es urgente, pero es necesario para proteger la red.\n\nGracias,\nDepartamento de IT.",
                 razones_correctas=["Texto"],
-                logo_path="assets/logos/synergy_corp_it.png" # Logo legítimo de la empresa
+                logo_path="assets/logos/synergy_corp.png", # Logo legítimo de la empresa
+                inbox_icon_path="assets/logos/synergy_corp_it_inbox.png",
             ),
 
             # MALICIOSO 4 (Spear Phishing del Hacker) - Correo final
@@ -1478,9 +1632,10 @@ class Level1Screen(BaseLevelScreen):
                 tipo_malicioso="spear_phishing",
                 remitente="unknown_user@192.168.1.10", # Una IP como remitente
                 asunto="Te estoy viendo...",
-                contenido="Lindo simulador, 'analista'.\n\nHas estado fastidioso reportando mis correos. Pero todos cometen un error...\n\n¿Estás seguro de que ese correo de 'RH' era realmente de RH? ¿O el de 'IT'? Qué paranoia.\n\nSigue jugando a proteger tu red. Sigue haciendo clic en 'Reportar'.\n\nNos veremos en el mundo real. ;-)\n\n- BlackHat",
+                contenido="\nLindo simulador, 'analista'.\n\nHas estado fastidioso reportando mis correos. Pero todos cometen un error...\n\n¿Estás seguro de que ese correo de 'RH' era realmente de RH? ¿O el de 'IT'? Qué paranoia.\n\nSigue jugando a proteger tu red. Sigue haciendo clic en 'Reportar'.\n\nNos veremos en el mundo real. ;-)\n\n- BlackHat",
                 razones_correctas=["Dominio", "Texto"],
-                logo_path=None # Sin logo
+                logo_path=None, # Sin logo
+                inbox_icon_path="assets/logos/hacker_inbox.png"
             )
         ]
 
