@@ -5,6 +5,42 @@ from moviepy import VideoFileClip
 # NUEVO: Importar sistema de estadísticas
 from stats_system import PlayerStats, ScoreManager, MistakeLog
 
+# ----- Limpieza opcional de archivos compilados (.pyc) y __pycache__ -----
+# Para ahorrar espacio en entornos con capacidad limitada, eliminamos
+# los ficheros .pyc y carpetas __pycache__ al iniciar. Esto no crea
+# archivos adicionales en el proyecto.
+import os, shutil
+
+def _cleanup_pyc_caches(root_path=None):
+    try:
+        root = root_path or os.path.dirname(__file__)
+    except Exception:
+        return
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Eliminar directorios __pycache__ completos
+        if os.path.basename(dirpath) == "__pycache__":
+            try:
+                shutil.rmtree(dirpath)
+            except Exception:
+                pass
+            # no seguir iterando dentro de este directorio
+            continue
+
+        # Eliminar archivos .pyc sueltos
+        for fname in filenames:
+            if fname.endswith('.pyc'):
+                try:
+                    os.remove(os.path.join(dirpath, fname))
+                except Exception:
+                    pass
+
+# Ejecutar limpieza ligera (segura) al iniciar el juego
+try:
+    _cleanup_pyc_caches()
+except Exception:
+    pass
+
+
 # Configuración
 SCREEN_W, SCREEN_H = 800, 600
 FPS = 60
