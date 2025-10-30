@@ -34,10 +34,18 @@ def _cleanup_pyc_caches(root_path=None):
                 except Exception:
                     pass
 
-# Ejecutar limpieza ligera (segura) al iniciar el juego
+# Ejecutar limpieza ligera solo si la variable de entorno NETDEFENDERS_CLEAN_PYC
+# está activada (para evitar borrados indeseados en máquinas de desarrollo).
+# Valores aceptados: '1', 'true', 'yes' (case-insensitive).
 try:
-    _cleanup_pyc_caches()
+    val = os.environ.get("NETDEFENDERS_CLEAN_PYC", "").lower()
+    if val in ("1", "true", "yes"):
+        try:
+            _cleanup_pyc_caches()
+        except Exception:
+            pass
 except Exception:
+    # No queremos que errores en esta comprobación impidan el juego
     pass
 
 
