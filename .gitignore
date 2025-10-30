@@ -1,0 +1,19 @@
+# Ignorar archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales comunes
+venv/
+.env/
+.env
+
+# VS Code
+.vscode/
+
+# Archivos temporales
+*.log
+.DS_Store
+
+# Assets grandes (si quieres ignorar por ahora, descomenta)
+# assets/logos/
