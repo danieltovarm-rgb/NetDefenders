@@ -54,1194 +54,6 @@ except Exception:
 SCREEN_W, SCREEN_H = 800, 600
 FPS = 60
 
-# =============================================================================
-# CLASE ARCHIVOSISTEMA PARA GESTIÓN COMPLETA DE ARCHIVOS
-# =============================================================================
-class ArchivoSistema:
-    """Clase que representa un archivo del sistema con todos sus metadatos y estado"""
-
-    def __init__(self, nombre, extension, tamaño, fecha_mod, permisos, es_infectado=False,
-                 tipo_virus=None, probabilidad_infeccion=0, sintoma_asociado=None):
-        self.nombre = nombre
-        self.extension = extension
-        self.extension_real = self._detectar_extension_real(nombre, extension)
-        self.tamaño = tamaño
-        self.fecha_mod = fecha_mod
-        self.permisos = permisos
-        self.es_infectado = es_infectado
-        self.tipo_virus = tipo_virus
-        self.probabilidad_infeccion = probabilidad_infeccion
-        self.sintoma_asociado = sintoma_asociado
-        self.en_cuarentena = False
-        self.eliminado = False
-        self.rect = None  # Se asignará cuando se coloque en una habitación
-
-    def _detectar_extension_real(self, nombre, extension_visible):
-        """Detecta extensiones dobles o engañosas"""
-        if '.' in nombre:
-            partes = nombre.split('.')
-            if len(partes) > 2:
-                return f".{partes[-1]}"
-            elif len(partes) == 2:
-                return f".{partes[1]}"
-        return extension_visible
-
-    def obtener_metadatos(self):
-        """Retorna metadatos formateados para mostrar en UI"""
-        return {
-            "Nombre": self.nombre,
-            "Extensión": self.extension,
-            "Extensión Real": self.extension_real,
-            "Tamaño": self.tamaño,
-            "Fecha Modificación": self.fecha_mod,
-            "Permisos": self.permisos,
-            "Estado": "INFECTADO" if self.es_infectado else "LIMPIO",
-            "Tipo Virus": self.tipo_virus if self.es_infectado else "Ninguno",
-            "Probabilidad": f"{self.probabilidad_infeccion}%" if self.es_infectado else "0%"
-        }
-
-    def es_sospechoso(self):
-        """Determina si el archivo tiene características sospechosas"""
-        # Extensiones dobles
-        if self.extension != self.extension_real:
-            return True
-        # Tamaños incongruentes
-        if self.extension in [".txt", ".ini"] and "MB" in self.tamaño:
-            return True
-        if self.extension == ".exe" and "KB" not in self.tamaño:
-            return True
-        # Horas extrañas de modificación
-        if "04:30" in self.fecha_mod or "03:15" in self.fecha_mod:
-            return True
-        return False
-
-
-# =============================================================================
-# CLASE GESTOR VIRUS PARA CONTROLAR INFECCIONES Y SÍNTOMAS
-# =============================================================================
-class GestorVirus:
-    """Gestiona los virus, síntomas y su relación con archivos"""
-
-    def __init__(self):
-        self.tipos_virus = {
-            "ransomware": {"sintoma": "pantalla_bloqueada", "daño": 25},
-            "adware": {"sintoma": "popups", "daño": 15},
-            "miner": {"sintoma": "ralentizacion", "daño": 20},
-            "spyware": {"sintoma": "teclas_fantasma", "daño": 10}
-        }
-        self.sintomas_activos = {
-            "ralentizacion": False,
-            "popups": False,
-            "pantalla_bloqueada": False,
-            "teclas_fantasma": False
-        }
-        self.archivos_infectados = {}  # archivo_id -> tipo_virus
-
-    def activar_sintoma(self, tipo_virus):
-        """Activa el síntoma asociado a un tipo de virus"""
-        if tipo_virus in self.tipos_virus:
-            sintoma = self.tipos_virus[tipo_virus]["sintoma"]
-            self.sintomas_activos[sintoma] = True
-
-    def desactivar_sintoma(self, tipo_virus):
-        """Desactiva el síntoma asociado a un tipo de virus"""
-        if tipo_virus in self.tipos_virus:
-            sintoma = self.tipos_virus[tipo_virus]["sintoma"]
-            self.sintomas_activos[sintoma] = False
-
-    def verificar_sintoma_por_archivo(self, archivo):
-        """Verifica si un archivo está causando algún síntoma activo"""
-        if archivo.es_infectado and archivo.tipo_virus:
-            sintoma = self.tipos_virus.get(archivo.tipo_virus, {}).get("sintoma")
-            return self.sintomas_activos.get(sintoma, False)
-        return False
-
-    def hay_sintomas_activos(self):
-        """Verifica si hay algún síntoma activo"""
-        return any(self.sintomas_activos.values())
-
-
-# --------- Clase base para pantallas
-class Screen(ABC):
-    def __init__(self, game):
-        self.game = game
-
-    @abstractmethod
-    def handle_event(self, event): ...
-
-    @abstractmethod
-    def update(self, dt): ...
-
-    @abstractmethod
-    def render(self, surf): ...
-
-
-# --------- Clase del jugador para Nivel 2
-class PlayerAvatar:
-    def __init__(self, x, y):
-        self.position = pygame.math.Vector2(x, y)
-        self.speed = 200  # Velocidad en píxeles por segundo
-        self.size = (30, 30)  # Tamaño del avatar
-        self.rect = pygame.Rect(x, y, self.size[0], self.size[1])
-
-    def update(self, dt, keys, bounds_rect=None):
-        movement = pygame.math.Vector2(0, 0)
-
-        # WASD para movimiento
-        if keys[pygame.K_w]:
-            movement.y = -1
-        if keys[pygame.K_s]:
-            movement.y = 1
-        if keys[pygame.K_a]:
-            movement.x = -1
-        if keys[pygame.K_d]:
-            movement.x = 1
-
-        # Normalizar el vector si hay movimiento diagonal
-        if movement.length() > 0:
-            movement = movement.normalize()
-
-        # Aplicar velocidad y deltatime
-        movement *= self.speed * (dt / 1000.0)
-
-        # Actualizar posición
-        new_pos = self.position + movement
-
-        # Colisiones con bordes
-        if bounds_rect:
-            new_pos.x = max(bounds_rect.left, min(new_pos.x, bounds_rect.right - self.size[0]))
-            new_pos.y = max(bounds_rect.top, min(new_pos.y, bounds_rect.bottom - self.size[1]))
-        else:
-            new_pos.x = max(0, min(new_pos.x, SCREEN_W - self.size[0]))
-            new_pos.y = max(0, min(new_pos.y, SCREEN_H - self.size[1]))
-
-        # Actualizar posición y rectángulo
-        self.position = new_pos
-        self.rect.x = self.position.x
-        self.rect.y = self.position.y
-
-    def draw(self, surface):
-        pygame.draw.rect(surface, (0, 255, 0), self.rect)
-
-
-# --------- Nivel 2: Análisis y limpieza de PC ----------
-class Level2Screen(Screen):
-    def __init__(self, game):
-        super().__init__(game)
-        self.state = "narrativa_inicial"
-
-        # Sistema de archivos y virus
-        self.gestor_virus = GestorVirus()
-        self.archivo_seleccionado = None
-        self.accion_en_progreso = None
-        self.tiempo_accion = 0
-        self.duracion_escaneo = 3000
-
-        # Sistema de recursos
-        self.recursos = 100
-        self.costos_acciones = {
-            "inspeccionar": 0,
-            "escanear_archivo": 10,
-            "escanear_carpeta": 15,
-            "cuarentena": 8,
-            "limpiar_malware": 0,
-            "limpiar_seguro": 12
-        }
-
-        # Estructura de directorios completa
-        self.directory_structure = {
-            "C:/": ["Users", "Program Files", "Windows", "Temp"],
-            "C:/Users": ["Admin", "Public"],
-            "C:/Users/Admin": ["Documents", "Downloads", "AppData"],
-            "C:/Users/Admin/Documents": [],
-            "C:/Users/Admin/Downloads": [],
-            "C:/Users/Admin/AppData": ["Local", "Roaming"],
-            "C:/Users/Admin/AppData/Local": ["Temp"],
-            "C:/Program Files": ["Common Files", "Internet Explorer"],
-            "C:/Windows": ["System32", "SysWOW64", "Temp"],
-            "C:/Windows/System32": [],
-            "C:/Temp": []
-        }
-
-        # Directorio actual y anterior
-        self.current_directory = "C:/"
-        self.previous_directory = None
-
-        self.game_time = 0
-        self.door_interaction_distance = 50
-
-        # HUD configuration
-        margin = 10
-        panel_top = 50
-        log_height = 80
-
-        available_width = SCREEN_W - (margin * 4)
-        left_width = int(available_width * 0.25)
-        right_width = int(available_width * 0.25)
-        center_width = available_width - left_width - right_width
-
-        panel_height = SCREEN_H - panel_top - log_height - (margin * 2)
-
-        self.hud_rects = {
-            "left_files": pygame.Rect(margin, panel_top, left_width, panel_height),
-            "center_preview": pygame.Rect(margin * 2 + left_width, panel_top, center_width, panel_height),
-            "right_tools": pygame.Rect(SCREEN_W - right_width - margin, panel_top, right_width, panel_height),
-            "bottom_log": pygame.Rect(margin, SCREEN_H - log_height, SCREEN_W - (margin * 2), log_height - margin),
-            "resource_bar": pygame.Rect(margin, 30, SCREEN_W - (margin * 2), 10)
-        }
-
-        # Colores del HUD
-        self.hud_colors = {
-            "background": (20, 25, 35),
-            "border": (40, 50, 70),
-            "highlight": (0, 255, 255),
-            "text": (220, 220, 220),
-            "resource": (0, 255, 0),
-            "door": (0, 150, 200),
-            "door_highlight": (255, 255, 0)
-        }
-
-        # Crear avatar del jugador
-        center_panel = self.hud_rects["center_preview"]
-        self.avatar = PlayerAvatar(center_panel.centerx, center_panel.centery)
-
-        # Definir puertas reubicadas: cuadrícula horizontal en esquina superior izquierda del panel central.
-        # Además, la puerta "Back" se sitúa centrada en la parte inferior del panel central.
-        door_width, door_height = 80, 50
-        dw, dh = door_width, door_height
-        tlx = center_panel.left + 20  # margen interno izquierdo
-        # MOVER CUADRÍCULA UN POCO MÁS ABAJO PARA NO CHOCAR CON TEXTO DEL SISTEMA
-        tly = center_panel.top + 50   # margen interno superior ajustado (+30)
-        gap = 8
-        usable_w = center_panel.w - 40  # márgenes internos totales (20 izquierda, 20 derecha)
-        cols = max(1, usable_w // (dw + gap))
-
-        def rect_at(index):
-            row = index // cols
-            col = index % cols
-            x = tlx + col * (dw + gap)
-            y = tly + row * (dh + gap)
-            return pygame.Rect(x, y, dw, dh)
-
-        def back_rect():
-            bx = center_panel.centerx - dw // 2
-            by = center_panel.bottom - dh - 60
-            return pygame.Rect(bx, by, dw, dh)
-
-        self.doors = {
-            "C:/": {
-                "Users": (rect_at(0), "C:/Users"),
-                "Program Files": (rect_at(1), "C:/Program Files"),
-                "Windows": (rect_at(2), "C:/Windows"),
-                "Temp": (rect_at(3), "C:/Temp")
-            },
-            "C:/Users": {
-                "Admin": (rect_at(0), "C:/Users/Admin"),
-                "Public": (rect_at(1), "C:/Users/Public"),
-                "Back": (back_rect(), "C:/")
-            },
-            "C:/Users/Admin": {
-                "Documents": (rect_at(0), "C:/Users/Admin/Documents"),
-                "Downloads": (rect_at(1), "C:/Users/Admin/Downloads"),
-                "AppData": (rect_at(2), "C:/Users/Admin/AppData"),
-                "Back": (back_rect(), "C:/Users")
-            },
-            "C:/Users/Admin/Documents": {
-                "Back": (back_rect(), "C:/Users/Admin")
-            },
-            "C:/Users/Admin/Downloads": {
-                "Back": (back_rect(), "C:/Users/Admin")
-            },
-            "C:/Users/Admin/AppData": {
-                "Local": (rect_at(0), "C:/Users/Admin/AppData/Local"),
-                "Roaming": (rect_at(1), "C:/Users/Admin/AppData/Roaming"),
-                "Back": (back_rect(), "C:/Users/Admin")
-            },
-            "C:/Users/Admin/AppData/Local": {
-                "Temp": (rect_at(0), "C:/Users/Admin/AppData/Local/Temp"),
-                "Back": (back_rect(), "C:/Users/Admin/AppData")
-            },
-            "C:/Program Files": {
-                "Common Files": (rect_at(0), "C:/Program Files/Common Files"),
-                "Internet Explorer": (rect_at(1), "C:/Program Files/Internet Explorer"),
-                "Back": (back_rect(), "C:/")
-            },
-            "C:/Windows": {
-                "System32": (rect_at(0), "C:/Windows/System32"),
-                "SysWOW64": (rect_at(1), "C:/Windows/SysWOW64"),
-                "Temp": (rect_at(2), "C:/Windows/Temp"),
-                "Back": (back_rect(), "C:/")
-            },
-            "C:/Windows/System32": {
-                "Back": (back_rect(), "C:/Windows")
-            }
-        }
-
-        # Estado del HUD
-        self.active_panel = "center_preview"
-        self.hud_elements = {
-            "left_files": [],
-            "tools": ["Inspeccionar", "Escanear", "Cuarentena", "Limpiar"]
-        }
-
-        # Fuentes
-        # Cargar fuente personalizada desde archivo texto.ttf (fallback a default si falla)
-        try:
-            custom_font_title = pygame.font.Font("texto.ttf", 24)
-            custom_font_normal = pygame.font.Font("texto.ttf", 20)
-            custom_font_small = pygame.font.Font("texto.ttf", 16)
-        except Exception:
-            custom_font_title = pygame.font.Font(None, 24)
-            custom_font_normal = pygame.font.Font(None, 20)
-            custom_font_small = pygame.font.Font(None, 16)
-
-        self.fonts = {
-            "title": custom_font_title,
-            "normal": custom_font_normal,
-            "small": custom_font_small
-        }
-
-        # Botones de herramientas
-        self.tool_button_rects = []
-        tool_rect = self.hud_rects["right_tools"].copy()
-        tool_rect.y += 35
-        tool_rect.x += 10
-        tool_rect.width -= 20
-
-        for tool in self.hud_elements["tools"]:
-            button_rect = pygame.Rect(tool_rect.x, tool_rect.y, tool_rect.width, 30)
-            self.tool_button_rects.append(button_rect)
-            tool_rect.y += 40
-
-        # Variables de estado del juego
-        self.max_mistakes = 5
-        self.mistakes_made = 0
-        self.total_viruses = 0  # Se calculará después
-        self.viruses_cleaned = 0
-        self.victory_condition = False
-        self.game_over_reason = ""
-
-        # Estado de transición
-        self.in_transition = False
-        self.transition_time = 0.0
-        self.transition_duration = 0.5
-        self.transition_target = None
-        self.transition_start_pos = pygame.math.Vector2(0, 0)
-        self.transition_end_pos = pygame.math.Vector2(0, 0)
-
-        # Interacción
-        self.near_door = None
-        self.door_highlight_time = 0.0
-
-        # Archivos
-        self.files_in_room = {}
-        self.file_interaction_distance = 40
-        self.near_file = None
-        self.file_highlight_time = 0.0
-        # Estado previo de la tecla E para disparo solo en flanco
-        self._e_prev = False
-
-        # Mensajes
-        self.current_message = "Log: Esperando acciones..."
-        self.message_duration = 3.0
-        self.effect_timers = {"message": 0.0}
-
-        # =============================================================================
-        # GENERACIÓN DE ARCHIVOS CON METADATOS COMPLETOS (MÁS DE 10 ARCHIVOS)
-        # =============================================================================
-        cp_x, cp_y = self.hud_rects["center_preview"].centerx, self.hud_rects["center_preview"].centery
-        file_w, file_h = 30, 30
-
-        # Generar archivos para cada directorio - MÁS DE 10 ARCHIVOS TOTAL
-        self.files_in_room = {
-            "C:/": [
-                ArchivoSistema("readme.txt", ".txt", "1 KB", "15/03/2024 10:30", "Lectura", False),
-                ArchivoSistema("config.sys", ".sys", "2 KB", "14/03/2024 14:15", "Sistema", False),
-                ArchivoSistema("autoexec.bat", ".bat", "1 KB", "13/03/2024 09:20", "Ejecución", False)
-            ],
-            "C:/Users/Admin/Documents": [
-                ArchivoSistema("document1.doc", ".doc", "250 KB", "16/03/2024 11:00", "Lectura/Escritura", False),
-                ArchivoSistema("budget.xlsx", ".xlsx", "450 KB", "16/03/2024 10:00", "Lectura/Escritura", False),
-                ArchivoSistema("presentation.ppt", ".ppt", "1.2 MB", "15/03/2024 16:30", "Lectura", False)
-            ],
-            "C:/Users/Admin/Downloads": [
-                ArchivoSistema("GIMP_Installer.exe", ".exe", "120 MB", "16/03/2024 09:45", "Ejecución", False),
-                ArchivoSistema("Free_Game.exe", ".exe", "420 KB", "15/03/2024 04:30", "Ejecución", True, "adware", 85,
-                               "popups"),
-                ArchivoSistema("invoice_2025.pdf", ".pdf", "2.3 MB", "16/03/2024 11:20", "Lectura", False),
-                ArchivoSistema("crypto_miner.exe", ".exe", "320 KB", "15/03/2024 03:15", "Ejecución", True, "miner", 92,
-                               "ralentizacion"),
-                ArchivoSistema("movie.mp4", ".mp4", "1.5 GB", "14/03/2024 20:15", "Lectura", False)
-            ],
-            "C:/Windows/System32": [
-                ArchivoSistema("kernel32.dll", ".dll", "1.2 MB", "10/03/2024 08:00", "Sistema", False),
-                ArchivoSistema("x_virus.exe", ".exe", "520 KB", "14/03/2024 04:30", "Ejecución", True, "ransomware", 95,
-                               "pantalla_bloqueada"),
-                ArchivoSistema("user32.dll", ".dll", "890 KB", "10/03/2024 08:00", "Sistema", False),
-                ArchivoSistema("spy_tool.exe", ".exe", "280 KB", "15/03/2024 02:45", "Ejecución", True, "spyware", 78,
-                               "teclas_fantasma"),
-                ArchivoSistema("winlogon.exe", ".exe", "1.1 MB", "10/03/2024 08:00", "Sistema", False)
-            ],
-            "C:/Temp": [
-                ArchivoSistema("temp_file.tmp", ".tmp", "15 KB", "16/03/2024 12:05", "Lectura/Escritura", False),
-                ArchivoSistema("adware_bundle.exe", ".exe", "650 KB", "15/03/2024 04:30", "Ejecución", True, "adware",
-                               88, "popups"),
-                ArchivoSistema("logfile.log", ".log", "3 KB", "16/03/2024 12:10", "Lectura", False)
-            ],
-            "C:/Program Files": [
-                ArchivoSistema("program1.exe", ".exe", "5.2 MB", "13/03/2024 12:00", "Ejecución", False),
-                ArchivoSistema("program2.dll", ".dll", "1.8 MB", "13/03/2024 12:00", "Sistema", False)
-            ]
-        }
-
-        # Calcular el total de virus
-        for directorio, archivos in self.files_in_room.items():
-            for archivo in archivos:
-                if archivo.es_infectado:
-                    self.total_viruses += 1
-
-        # Asignar rectángulos a los archivos - POSICIONES CORREGIDAS
-        for directorio, archivos in self.files_in_room.items():
-            for i, archivo in enumerate(archivos):
-                # Posicionar archivos en una cuadrícula dentro del panel central
-                # PERO en la parte INFERIOR para no interferir con las puertas
-                row = i // 4
-                col = i % 4
-                archivo.rect = pygame.Rect(
-                    cp_x - 150 + col * 70,  # Centrado horizontalmente
-                    cp_y + 50 + row * 70,  # PARTE INFERIOR del panel
-                    file_w, file_h
-                )
-                # Activar síntomas de archivos infectados
-                if archivo.es_infectado and archivo.tipo_virus:
-                    self.gestor_virus.activar_sintoma(archivo.tipo_virus)
-
-        self.paused = False
-
-        # Actualizar panel de archivos inicial
-        self.actualizar_panel_archivos()
-
-    def actualizar_panel_archivos(self):
-        """Actualiza la lista de archivos en el panel izquierdo según el directorio actual"""
-        self.hud_elements["left_files"] = []
-
-        # Agregar las carpetas (subdirectorios) del directorio actual
-        if self.current_directory in self.directory_structure:
-            for subdir in self.directory_structure[self.current_directory]:
-                self.hud_elements["left_files"].append({
-                    "name": subdir,
-                    "size": "--",
-                    "type": "Folder"
-                })
-
-        # Agregar los archivos del directorio actual
-        if self.current_directory in self.files_in_room:
-            for archivo in self.files_in_room[self.current_directory]:
-                if not archivo.eliminado:
-                    self.hud_elements["left_files"].append({
-                        "name": archivo.nombre,
-                        "size": archivo.tamaño,
-                        "type": "File",
-                        "object": archivo  # Referencia al objeto real
-                    })
-
-    # =============================================================================
-    # MÉTODOS PARA ACCIONES DE ANÁLISIS DE ARCHIVOS
-    # =============================================================================
-
-    def ejecutar_accion(self, accion, archivo=None):
-        """Ejecuta una acción sobre un archivo o directorio"""
-        if self.accion_en_progreso:
-            self.show_message("Ya hay una acción en progreso...")
-            return
-
-        costo = self.costos_acciones.get(accion, 0)
-        if self.recursos < costo:
-            self.show_message("¡Recursos insuficientes!")
-            return
-
-        self.accion_en_progreso = accion
-        self.tiempo_accion = 0
-        self.archivo_seleccionado = archivo
-
-        # Aplicar costo de recursos inmediatamente
-        if costo > 0:
-            self.recursos -= costo
-            self.show_message(f"Recursos: -{costo} | {self.recursos} restantes")
-
-    def actualizar_acciones(self, dt):
-        """Actualiza las acciones en progreso y sus temporizadores"""
-        if not self.accion_en_progreso:
-            return
-
-        self.tiempo_accion += dt
-
-        if self.tiempo_accion >= self.duracion_escaneo:
-            # Acción completada
-            if self.accion_en_progreso == "inspeccionar":
-                self._completar_inspeccion()
-            elif self.accion_en_progreso == "escanear_archivo":
-                self._completar_escaneo_archivo()
-            elif self.accion_en_progreso == "escanear_carpeta":
-                self._completar_escaneo_carpeta()
-            elif self.accion_en_progreso == "cuarentena":
-                self._completar_cuarentena()
-            elif self.accion_en_progreso == "limpiar":
-                self._completar_limpieza()
-
-            self.accion_en_progreso = None
-            self.archivo_seleccionado = None
-
-    def _completar_inspeccion(self):
-        """Completa la acción de inspeccionar un archivo"""
-        if self.archivo_seleccionado:
-            metadatos = self.archivo_seleccionado.obtener_metadatos()
-            mensaje = f"INSPECCIÓN: {self.archivo_seleccionado.nombre}\n"
-            for key, value in metadatos.items():
-                mensaje += f"{key}: {value}\n"
-            self.show_message(mensaje)
-
-    def _completar_escaneo_archivo(self):
-        """Completa el escaneo individual de un archivo"""
-        if self.archivo_seleccionado:
-            probabilidad = self.archivo_seleccionado.probabilidad_infeccion
-            if self.archivo_seleccionado.es_infectado:
-                mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {probabilidad}% riesgo - {self.archivo_seleccionado.tipo_virus.upper()}"
-            else:
-                # Para archivos limpios, mostrar un porcentaje bajo aleatorio
-                riesgo = random.randint(0, 15)
-                mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {riesgo}% riesgo - LIMPIO"
-            self.show_message(mensaje)
-
-    def _completar_escaneo_carpeta(self):
-        """Completa el escaneo de la carpeta actual"""
-        archivos_riesgo = []
-
-        # Escanear subcarpetas
-        if self.current_directory in self.directory_structure:
-            for subdir in self.directory_structure[self.current_directory]:
-                # Simular riesgo en carpetas
-                riesgo_carpeta = random.randint(0, 30)
-                archivos_riesgo.append((f"[CARPETA] {subdir}", riesgo_carpeta))
-
-        # Escanear archivos
-        if self.current_directory in self.files_in_room:
-            for archivo in self.files_in_room[self.current_directory]:
-                if not archivo.eliminado and not archivo.en_cuarentena:
-                    if archivo.es_infectado:
-                        riesgo = archivo.probabilidad_infeccion
-                    else:
-                        riesgo = random.randint(0, 20)
-                    archivos_riesgo.append((archivo.nombre, riesgo))
-
-        mensaje = "ESCANEO CARPETA:\n"
-        for nombre, riesgo in archivos_riesgo[:6]:  # Mostrar máximo 6 elementos
-            estado = "ALTO RIESGO" if riesgo > 50 else "BAJO RIESGO"
-            mensaje += f"{nombre}: {riesgo}% - {estado}\n"
-        self.show_message(mensaje)
-
-    def _completar_cuarentena(self):
-        """Completa la acción de poner en cuarentena un archivo"""
-        if self.archivo_seleccionado:
-            self.archivo_seleccionado.en_cuarentena = True
-
-            if self.archivo_seleccionado.es_infectado:
-                self.show_message(f"CUARENTENA: {self.archivo_seleccionado.nombre} - Virus aislado")
-                # Programar desactivación de síntoma
-                pygame.time.set_timer(pygame.USEREVENT + 1, 20000)
-            else:
-                # Penalización por archivo seguro
-                self.recursos -= 5
-                self.mistakes_made += 1
-                self.show_message(f"ERROR: {self.archivo_seleccionado.nombre} era seguro! -5 recursos")
-
-    def _completar_limpieza(self):
-        """Completa la acción de limpiar/eliminar un archivo"""
-        if self.archivo_seleccionado:
-            if self.archivo_seleccionado.es_infectado:
-                # Éxito - eliminar virus
-                self.archivo_seleccionado.eliminado = True
-                self.viruses_cleaned += 1
-
-                # Desactivar síntoma inmediatamente
-                if self.archivo_seleccionado.tipo_virus:
-                    self.gestor_virus.desactivar_sintoma(self.archivo_seleccionado.tipo_virus)
-
-                self.show_message(
-                    f"¡VIRUS ELIMINADO! {self.archivo_seleccionado.nombre} - {self.viruses_cleaned}/{self.total_viruses}")
-
-            else:
-                # Error - eliminar archivo seguro
-                self.recursos -= self.costos_acciones["limpiar_seguro"]
-                self.mistakes_made += 1
-                self.show_message(
-                    f"ERROR: Eliminaste archivo seguro! -{self.costos_acciones['limpiar_seguro']} recursos")
-
-    def manejar_evento_cuarentena(self, event):
-        """Maneja el evento de temporizador para desactivar síntomas"""
-        if event.type == pygame.USEREVENT + 1:
-            for directorio, archivos in self.files_in_room.items():
-                for archivo in archivos:
-                    if (archivo.en_cuarentena and archivo.es_infectado and
-                            self.gestor_virus.verificar_sintoma_por_archivo(archivo)):
-                        self.gestor_virus.desactivar_sintoma(archivo.tipo_virus)
-                        self.show_message(f"Síntoma desactivado: {archivo.tipo_virus}")
-                        break
-            pygame.time.set_timer(pygame.USEREVENT + 1, 0)
-
-    def dibujar_sintomas_globales(self, surf):
-        """Dibuja los síntomas activos en la parte superior de la pantalla"""
-        if not self.gestor_virus.hay_sintomas_activos():
-            return
-
-        sintomas_texto = "SÍNTOMAS: "
-        if self.gestor_virus.sintomas_activos["ralentizacion"]:
-            sintomas_texto += "LENTITUD "
-        if self.gestor_virus.sintomas_activos["popups"]:
-            sintomas_texto += "POPUPS "
-        if self.gestor_virus.sintomas_activos["pantalla_bloqueada"]:
-            sintomas_texto += "BLOQUEO "
-        if self.gestor_virus.sintomas_activos["teclas_fantasma"]:
-            sintomas_texto += "TECLAS "
-
-        sintoma_surf = self.fonts["normal"].render(sintomas_texto, True, (255, 50, 50))
-        surf.blit(sintoma_surf, (SCREEN_W // 2 - sintoma_surf.get_width() // 2, 5))
-
-    def dibujar_progreso_accion(self, surf):
-        """Dibuja la barra de progreso de la acción en curso"""
-        if not self.accion_en_progreso:
-            return
-
-        progreso = min(1.0, self.tiempo_accion / self.duracion_escaneo)
-        bar_width = 200
-        bar_height = 20
-        bar_x = SCREEN_W // 2 - bar_width // 2
-        bar_y = SCREEN_H - 120
-
-        # Fondo de la barra
-        pygame.draw.rect(surf, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height))
-        # Barra de progreso
-        pygame.draw.rect(surf, (0, 200, 255), (bar_x, bar_y, bar_width * progreso, bar_height))
-        # Texto
-        accion_text = self.fonts["small"].render(f"{self.accion_en_progreso.upper()}...", True, (255, 255, 255))
-        surf.blit(accion_text, (bar_x, bar_y - 25))
-
-    def handle_event(self, event):
-        if event.type == pygame.USEREVENT + 1:
-            self.manejar_evento_cuarentena(event)
-
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                self.paused = not self.paused
-            elif self.state == "narrativa_inicial" and event.key == pygame.K_RETURN:
-                self.state = "jugando"
-            elif self.state == "fin_juego" and event.key == pygame.K_r:
-                self.__init__(self.game)
-            elif self.state == "jugando":
-                if event.key == pygame.K_q and self.previous_directory and not self.in_transition:
-                    self.start_transition(self.previous_directory, None)
-                    self.show_message(f"Regresando a {self.previous_directory}...")
-
-        # CLICK IZQUIERDO
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.state == "jugando" and not self.accion_en_progreso:
-
-                # --------------------------- HERRAMIENTAS ---------------------------
-                for i, button_rect in enumerate(self.tool_button_rects):
-                    if button_rect.collidepoint(event.pos):
-                        tool_name = self.hud_elements["tools"][i]
-
-                        if tool_name == "Inspeccionar":
-                            if self.archivo_seleccionado:
-                                self.ejecutar_accion("inspeccionar", self.archivo_seleccionado)
-                            else:
-                                self.show_message("Selecciona un archivo primero")
-
-                        elif tool_name == "Escanear":
-                            if self.archivo_seleccionado:
-                                self.ejecutar_accion("escanear_archivo", self.archivo_seleccionado)
-                            else:
-                                self.ejecutar_accion("escanear_carpeta")
-
-                        elif tool_name == "Cuarentena":
-                            if self.archivo_seleccionado:
-                                self.ejecutar_accion("cuarentena", self.archivo_seleccionado)
-                            else:
-                                self.show_message("Selecciona un archivo primero")
-
-                        elif tool_name == "Limpiar":
-                            if self.archivo_seleccionado:
-                                self.ejecutar_accion("limpiar", self.archivo_seleccionado)
-                            else:
-                                self.show_message("Selecciona un archivo primero")
-
-                        return  # dejar de procesar más clics
-
-                # ------------------------ SELECCIÓN DE ARCHIVOS ------------------------
-                file_rect = self.hud_rects["left_files"].copy()
-                file_rect.y += 35
-                file_rect.x += 10
-                file_rect.width -= 20
-
-                for file_info in self.hud_elements["left_files"]:
-                    item_rect = pygame.Rect(file_rect.x, file_rect.y, file_rect.width, 25)
-
-                    if item_rect.collidepoint(event.pos) and file_info["type"] == "File":
-                        # Al hacer clic, guardar el archivo seleccionado real
-                        self.archivo_seleccionado = file_info["object"]
-                        self.show_message(f"Archivo seleccionado: {self.archivo_seleccionado.nombre}")
-                        return
-
-                    file_rect.y += 30
-
-    def update(self, dt):
-        if self.paused or self.state != "jugando":
-            return
-
-        self.actualizar_acciones(dt)
-        self.game_time += dt
-
-        # BLOQUEAR TODO SI ESTÁ EN TRANSICIÓN
-        if self.in_transition:
-            self.transition_time += dt
-            progress = min(1.0, self.transition_time / self.transition_duration)
-
-            if progress >= 1.0:
-                self.in_transition = False
-                self.current_directory = self.transition_target
-                # POSICIONAR AL JUGADOR EN EL CENTRO
-                center_panel = self.hud_rects["center_preview"]
-                self.avatar.position.x = center_panel.centerx
-                self.avatar.position.y = center_panel.centery
-                self.avatar.rect.x = self.avatar.position.x
-                self.avatar.rect.y = self.avatar.position.y
-                self.actualizar_panel_archivos()
-                print(f"DEBUG: Llegué a {self.current_directory}")  # Para debug
-            return
-
-        keys = pygame.key.get_pressed()
-        # Edge detection para tecla E (solo una interacción por pulsación)
-        e_down = keys[pygame.K_e]
-        e_pressed_edge = e_down and (not self._e_prev)
-        # Actualizar avatar primero
-        self.avatar.update(dt, keys, self.hud_rects["center_preview"])
-
-        self.near_door = None
-        self.near_file = None
-
-        # DETECCIÓN DE PUERTAS - SOLO UNA PUERTA A LA VEZ
-        closest_door = None
-        min_distance = float('inf')
-
-        if self.current_directory in self.doors:
-            for door_name, (door_rect, target_dir) in self.doors[self.current_directory].items():
-                # EXCLUIR PUERTAS "Back" DE LA DETECCIÓN AUTOMÁTICA
-                if door_name == "Back":
-                    continue
-
-                door_center = pygame.math.Vector2(door_rect.centerx, door_rect.centery)
-                player_center = pygame.math.Vector2(self.avatar.rect.centerx, self.avatar.rect.centery)
-                distance = door_center.distance_to(player_center)
-
-                if distance < self.door_interaction_distance and distance < min_distance:
-                    min_distance = distance
-                    closest_door = (door_name, door_rect, target_dir)
-
-        # ASIGNAR LA PUERTA MÁS CERCANA
-        if closest_door:
-            self.near_door = closest_door
-
-            # SOLO ENTRAR SI SE PRESIONA E EXPLÍCITAMENTE
-            if e_pressed_edge and not self.accion_en_progreso:
-                # IMPEDIR ENTRADA MÚLTIPLE - verificar que no estamos ya en transición
-                if not self.in_transition:
-                    door_name, door_rect, target_dir = closest_door
-                    print(f"DEBUG: Entrando a {target_dir} desde {self.current_directory}")  # Para debug
-                    self.start_transition(target_dir, door_rect)
-                    # Consumir la pulsación para no activar otras interacciones este frame
-                    e_pressed_edge = False
-
-        # DETECCIÓN SEPARADA PARA PUERTA "Back" (centrada abajo y resaltable)
-        if self.current_directory in self.doors and self.current_directory != "C:/":
-            back_entry = self.doors.get(self.current_directory, {}).get("Back")
-            if back_entry:
-                door_rect, target_dir = back_entry
-                player_center = pygame.math.Vector2(self.avatar.rect.centerx, self.avatar.rect.centery)
-                door_center = pygame.math.Vector2(door_rect.centerx, door_rect.centery)
-                distance = door_center.distance_to(player_center)
-
-                if distance < self.door_interaction_distance:
-                    # Marcar como puerta cercana para que se resalte en render
-                    self.near_door = ("Back", door_rect, target_dir)
-                    if e_pressed_edge and not self.accion_en_progreso and not self.in_transition:
-                        print(f"DEBUG: Regresando a {target_dir} desde {self.current_directory}")  # Para debug
-                        self.start_transition(target_dir, door_rect)
-                        e_pressed_edge = False
-
-        # DETECCIÓN DE ARCHIVOS (este código está bien)
-        closest_file = None
-        min_file_distance = float('inf')
-
-        if self.current_directory in self.files_in_room:
-            for archivo in self.files_in_room[self.current_directory]:
-                if archivo.eliminado:
-                    continue
-
-                file_center = pygame.math.Vector2(archivo.rect.centerx, archivo.rect.centery)
-                player_center = pygame.math.Vector2(self.avatar.rect.centerx, self.avatar.rect.centery)
-                distance = file_center.distance_to(player_center)
-
-                if distance < self.file_interaction_distance and distance < min_file_distance:
-                    min_file_distance = distance
-                    closest_file = archivo
-
-        if closest_file:
-            self.near_file = closest_file
-
-            if e_pressed_edge and not self.accion_en_progreso:
-                self.archivo_seleccionado = closest_file
-                self.show_message(f"Archivo seleccionado: {closest_file.nombre}")
-                e_pressed_edge = False
-
-        self.check_game_state()
-        # Actualizar estado previo para próxima iteración
-        self._e_prev = e_down
-
-    def start_transition(self, target_directory, door_rect):
-        """Inicia una transición a un nuevo directorio - VERSIÓN CORREGIDA"""
-        if self.in_transition:
-            return  # Ya está en transición, ignorar
-
-        self.in_transition = True
-        self.transition_time = 0
-        self.transition_target = target_directory
-        self.previous_directory = self.current_directory  # Guardar para poder regresar
-
-        # Posición simple en el centro - NO cerca de puertas
-        center_panel = self.hud_rects["center_preview"]
-        self.transition_start_pos = pygame.math.Vector2(
-            self.avatar.position.x,
-            self.avatar.position.y
-        )
-        self.transition_end_pos = pygame.math.Vector2(
-            center_panel.centerx,
-            center_panel.centery
-        )
-
-        self.show_message(f"Cambiando a {target_directory}...")
-
-    def start_transition(self, target_directory, door_rect):
-        if not self.in_transition:
-            self.in_transition = True
-            self.transition_time = 0
-            self.transition_target = target_directory
-            self.previous_directory = self.current_directory
-
-            self.transition_start_pos = pygame.math.Vector2(
-                self.avatar.position.x,
-                self.avatar.position.y
-            )
-
-            target_doors = self.doors.get(target_directory, {})
-            back_door = None
-            for name, (rect, dir_) in target_doors.items():
-                if dir_ == self.current_directory or name == "Back":
-                    back_door = rect
-                    break
-
-            if back_door:
-                self.transition_end_pos = pygame.math.Vector2(
-                    back_door.centerx,
-                    back_door.bottom + 50
-                )
-            else:
-                self.transition_end_pos = pygame.math.Vector2(
-                    SCREEN_W // 2,
-                    SCREEN_H - 100
-                )
-
-    def check_game_state(self):
-        if self.viruses_cleaned >= self.total_viruses:
-            self.victory_condition = True
-            self.game_over_reason = "¡Has limpiado todos los virus!"
-            self.state = "fin_juego"
-        elif self.recursos <= 0:
-            self.victory_condition = False
-            self.game_over_reason = "¡Te has quedado sin recursos!"
-            self.state = "fin_juego"
-        elif self.mistakes_made >= self.max_mistakes:
-            self.victory_condition = False
-            self.game_over_reason = "¡Has cometido demasiados errores!"
-            self.state = "fin_juego"
-
-    def show_message(self, message, duration=None):
-        self.current_message = message
-        self.effect_timers["message"] = duration or self.message_duration
-
-    def draw_panel_title(self, surf, rect, title):
-        text = self.fonts["title"].render(title, True, self.hud_colors["text"])
-        text_rect = text.get_rect(midtop=(rect.centerx, rect.top + 5))
-        surf.blit(text, text_rect)
-
-    def render(self, surf):
-        surf.fill((0, 0, 0))
-
-        if self.gestor_virus.sintomas_activos["ralentizacion"]:
-            if pygame.time.get_ticks() % 1000 < 500:
-                surf.fill((30, 30, 60), special_flags=pygame.BLEND_RGB_ADD)
-
-        if self.state == "narrativa_inicial":
-            # Narrativa inicial (placeholder)
-            pass
-        elif self.state == "jugando":
-            # Dibujar paneles
-            for name, rect in self.hud_rects.items():
-                if name == "resource_bar": continue
-                pygame.draw.rect(surf, self.hud_colors["background"], rect)
-                border_color = self.hud_colors["highlight"] if name == self.active_panel else self.hud_colors["border"]
-                pygame.draw.rect(surf, border_color, rect, 3 if name == self.active_panel else 2, border_radius=5)
-
-            # Barra de recursos
-            resource_rect = self.hud_rects["resource_bar"]
-            pygame.draw.rect(surf, (10, 10, 10), resource_rect)
-            resource_width = (self.recursos / 100) * (resource_rect.width - 4)
-            current_resource_rect = pygame.Rect(resource_rect.x + 2, resource_rect.y + 2, resource_width,
-                                                resource_rect.height - 4)
-            pygame.draw.rect(surf, self.hud_colors["resource"], current_resource_rect)
-            pygame.draw.rect(surf, self.hud_colors["border"], resource_rect, 1)
-
-            # Síntomas globales
-            self.dibujar_sintomas_globales(surf)
-
-            # Títulos
-            self.draw_panel_title(surf, self.hud_rects["left_files"], "Archivos")
-            self.draw_panel_title(surf, self.hud_rects["center_preview"], "Sistema")
-            self.draw_panel_title(surf, self.hud_rects["right_tools"], "Herramientas")
-
-            # Panel izquierdo - ARCHIVOS DEL DIRECTORIO ACTUAL
-            file_rect = self.hud_rects["left_files"].copy()
-            file_rect.y += 35
-            file_rect.x += 10
-            file_rect.width -= 20
-
-            for file_info in self.hud_elements["left_files"]:
-                # Icono (azul para carpetas, gris para archivos)
-                icon_rect = pygame.Rect(file_rect.x, file_rect.y + 2, 16, 16)
-                if file_info["type"] == "Folder":
-                    pygame.draw.rect(surf, (100, 100, 255), icon_rect)
-                else:
-                    pygame.draw.rect(surf, self.hud_colors["border"], icon_rect)
-
-                # Nombre
-                text = self.fonts["normal"].render(file_info["name"], True, self.hud_colors["text"])
-                surf.blit(text, (file_rect.x + 22, file_rect.y))
-                file_rect.y += 25
-                if file_rect.y > self.hud_rects["left_files"].bottom - 20:
-                    break
-
-            # Herramientas
-            for i, tool_name in enumerate(self.hud_elements["tools"]):
-                button_rect = self.tool_button_rects[i]
-                hover_color = self.hud_colors["highlight"] if button_rect.collidepoint(pygame.mouse.get_pos()) else \
-                self.hud_colors["border"]
-                pygame.draw.rect(surf, hover_color, button_rect, border_radius=5)
-
-                icon_rect = pygame.Rect(button_rect.x + 5, button_rect.y + 7, 16, 16)
-                pygame.draw.rect(surf, self.hud_colors["highlight"], icon_rect)
-
-                text = self.fonts["normal"].render(tool_name, True, self.hud_colors["text"])
-                surf.blit(text, (button_rect.x + 28, button_rect.y + 7))
-
-            # Log
-            log_rect = self.hud_rects["bottom_log"]
-            text = self.fonts["small"].render(self.current_message, True, self.hud_colors["text"])
-            surf.blit(text, (log_rect.x + 10, log_rect.y + 10))
-
-            # Puertas
-            if self.current_directory in self.doors:
-                for door_name, (door_rect, _) in self.doors[self.current_directory].items():
-                    color = self.hud_colors["door_highlight"] if (
-                                self.near_door and self.near_door[1] == door_rect) else self.hud_colors["door"]
-                    pygame.draw.rect(surf, color, door_rect, border_radius=5)
-
-                    if self.near_door and self.near_door[1] == door_rect:
-                        indicator_text = self.fonts["normal"].render("Presiona E", True, color)
-                        indicator_pos = (door_rect.centerx, door_rect.top - 20)
-                        text_rect = indicator_text.get_rect(center=indicator_pos)
-                        surf.blit(indicator_text, text_rect)
-                        pygame.draw.rect(surf, color, door_rect.inflate(4, 4), 2, border_radius=5)
-
-                    text = self.fonts["normal"].render(door_name, True, (0, 0, 0))
-                    text_rect = text.get_rect(center=door_rect.center)
-                    surf.blit(text, text_rect)
-
-            # Archivos en el directorio actual
-            if self.current_directory in self.files_in_room:
-                for archivo in self.files_in_room[self.current_directory]:
-                    if archivo.eliminado:
-                        continue
-
-                    file_rect = archivo.rect
-
-                    # Color según estado
-                    if archivo.en_cuarentena:
-                        color = (255, 165, 0)
-                    elif archivo.es_infectado:
-                        color = (255, 0, 0)
-                    elif archivo.es_sospechoso():
-                        color = (255, 255, 0)
-                    else:
-                        color = (200, 200, 200)
-
-                    # Resaltar si está cerca
-                    if self.near_file and self.near_file.nombre == archivo.nombre:
-                        color = (255, 255, 255)
-                        indicator_text = self.fonts["small"].render("E", True, color)
-                        indicator_pos = (file_rect.centerx, file_rect.top - 10)
-                        text_rect = indicator_text.get_rect(center=indicator_pos)
-                        surf.blit(indicator_text, text_rect)
-                        pygame.draw.rect(surf, color, file_rect.inflate(4, 4), 2, border_radius=3)
-
-                    # Resaltar si está seleccionado
-                    if self.archivo_seleccionado and self.archivo_seleccionado.nombre == archivo.nombre:
-                        pygame.draw.rect(surf, (0, 255, 255), file_rect.inflate(6, 6), 2, border_radius=4)
-
-                    # Dibujar archivo
-                    pygame.draw.rect(surf, color, file_rect, border_radius=3)
-
-                    nombre_corto = archivo.nombre[:8] + "..." if len(archivo.nombre) > 8 else archivo.nombre
-                    nombre_text = self.fonts["small"].render(nombre_corto, True, (0, 0, 0))
-                    text_rect = nombre_text.get_rect(center=file_rect.center)
-                    surf.blit(nombre_text, text_rect)
-
-            # Directorio actual y archivo seleccionado
-            dir_text = self.fonts["title"].render(f"Directory: {self.current_directory}", True, (255, 255, 255))
-            surf.blit(dir_text, (10, 10))
-
-            if self.archivo_seleccionado:
-                sel_text = self.fonts["normal"].render(f"Seleccionado: {self.archivo_seleccionado.nombre}", True,
-                                                       (0, 255, 255))
-                surf.blit(sel_text, (SCREEN_W - sel_text.get_width() - 10, 10))
-
-            # Avatar y progreso
-            self.avatar.draw(surf)
-            self.dibujar_progreso_accion(surf)
-
-            if self.in_transition:
-                progress = self.transition_time / self.transition_duration
-                alpha = int(255 * (0.5 - abs(0.5 - progress)))
-                overlay = pygame.Surface((SCREEN_W, SCREEN_H))
-                overlay.fill((0, 0, 0))
-                overlay.set_alpha(alpha)
-                surf.blit(overlay, (0, 0))
-
-        elif self.state == "fin_juego":
-            fin_box = pygame.Rect(200, 200, 400, 200)
-            pygame.draw.rect(surf, (20, 20, 40), fin_box, border_radius=10)
-            pygame.draw.rect(surf, (100, 100, 200), fin_box, 2, border_radius=10)
-
-            mensaje = self.game_over_reason
-            if self.victory_condition:
-                mensaje += f"\nVirus eliminados: {self.viruses_cleaned}/{self.total_viruses}"
-            else:
-                mensaje += f"\nRecursos restantes: {self.recursos}"
-
-            lineas = mensaje.split('\n')
-            y_offset = fin_box.centery - (len(lineas) * 20) // 2
-
-            for linea in lineas:
-                texto = self.fonts["normal"].render(linea, True, (255, 255, 255))
-                surf.blit(texto, (fin_box.centerx - texto.get_width() // 2, y_offset))
-                y_offset += 25
-
-            continuar_text = self.fonts["small"].render("Presiona R para reiniciar", True, (200, 200, 200))
-            surf.blit(continuar_text, (fin_box.centerx - continuar_text.get_width() // 2, fin_box.bottom - 30))
-
-        if self.paused:
-            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 150))
-            surf.blit(overlay, (0, 0))
-            pausa_text = self.fonts["title"].render("PAUSA", True, (255, 255, 255))
-            surf.blit(pausa_text,
-                      (SCREEN_W // 2 - pausa_text.get_width() // 2, SCREEN_H // 2 - pausa_text.get_height() // 2))
-
-# --------- Utilidades visuales (Matrix Rain y Glitch Text) ----------
-class MatrixRain:
-    def __init__(self, width, height, font_name="Consolas", font_size=16, charset=None, column_density=1.0,
-                 font_path=None):
-        self.w = width
-        self.h = height
-        # prefer a provided TTF path, fallback to SysFont
-        try:
-            if font_path:
-                self.font = pygame.font.Font(font_path, font_size)
-            else:
-                self.font = pygame.font.SysFont(font_name, font_size)
-        except Exception:
-            self.font = pygame.font.SysFont(font_name, font_size)
-        self.char_h = self.font.get_height()
-        self.char_w = self.font.size("M")[0]
-        # columnas efectivas: permitir bajar densidad para hacerlo más sutil
-        base_cols = max(1, self.w // self.char_w)
-        density = max(0.2, min(1.0, column_density or 1.0))
-        self.cols = max(1, int(base_cols * density))
-        self.charset = charset or list("01ABCDEFGHJKLMNPQRSTUVWXYZ1234567890")
-        # pre-render glyphs in green and head brighter
-        self.glyphs = {}
-        for ch in self.charset:
-            # tonos más oscuros y menos saturados para efecto en el fondo
-            surf = self.font.render(ch, True, (0, 110, 40))
-            head = self.font.render(ch, True, (120, 190, 120))
-            self.glyphs[ch] = (surf, head)
-
-        self.columns = []
-        import random as _r
-        # espaciado uniforme entre columnas efectivas
-        spacing = self.w / self.cols
-        for i in range(self.cols):
-            speed = _r.uniform(40, 90)  # más lento
-            length = _r.randint(8, 16)
-            y = _r.uniform(-self.h, 0)
-            # populate char sequence
-            seq = [_r.choice(self.charset) for _ in range(length)]
-            self.columns.append({
-                "x": int(i * spacing),
-                "y": y,
-                "speed": speed,
-                "len": length,
-                "seq": seq,
-            })
-
-    def update(self, dt):
-        dy_factor = dt / 1000.0
-        for col in self.columns:
-            col["y"] += col["speed"] * dy_factor
-            if col["y"] - col["len"] * self.char_h > self.h:
-                # reset above the screen
-                import random as _r
-                col["y"] = _r.uniform(-self.h * 0.3, 0)
-                col["speed"] = _r.uniform(40, 90)  # mantener lento al reiniciar
-                col["len"] = _r.randint(8, 16)
-                col["seq"] = [_r.choice(self.charset) for _ in range(col["len"])]
-
-    def draw(self, surf, alpha=140):
-        overlay = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
-        for col in self.columns:
-            x = col["x"]
-            y_head = col["y"]
-            for i in range(col["len"]):
-                y = int(y_head - i * self.char_h)
-                if y < -self.char_h or y > self.h:
-                    continue
-                ch = col["seq"][i % len(col["seq"])]
-                glyph, head = self.glyphs[ch]
-                g = head if i == 0 else glyph
-                # vary alpha along the trail
-                a = max(12, 120 - i * 10)  # más tenue
-                g.set_alpha(a)
-                overlay.blit(g, (x, y))
-        overlay.set_alpha(alpha)
-        surf.blit(overlay, (0, 0))
 
 
 def draw_glitch_text_surf(dest_surf, text_surf, center, scale=1.0, glitch_prob=0.08):
@@ -1349,6 +161,99 @@ def wrap_ellipsis(text: str, font: pygame.font.Font, max_w: int, max_h: int, lin
 
     # Limita a la cantidad de líneas que caben (esto solo se ejecuta si max_h NO es None)
     return lines[:int(max_lines)]
+
+# --------- Clase base para pantallas
+class Screen(ABC):
+    def __init__(self, game):
+        self.game = game
+
+    @abstractmethod
+    def handle_event(self, event): ...
+
+    @abstractmethod
+    def update(self, dt): ...
+
+    @abstractmethod
+    def render(self, surf): ...
+
+# --------- Utilidades visuales (Matrix Rain y Glitch Text) ----------
+class MatrixRain:
+    def __init__(self, width, height, font_name="Consolas", font_size=16, charset=None, column_density=1.0,
+                 font_path=None):
+        self.w = width
+        self.h = height
+        # prefer a provided TTF path, fallback to SysFont
+        try:
+            if font_path:
+                self.font = pygame.font.Font(font_path, font_size)
+            else:
+                self.font = pygame.font.SysFont(font_name, font_size)
+        except Exception:
+            self.font = pygame.font.SysFont(font_name, font_size)
+        self.char_h = self.font.get_height()
+        self.char_w = self.font.size("M")[0]
+        # columnas efectivas: permitir bajar densidad para hacerlo más sutil
+        base_cols = max(1, self.w // self.char_w)
+        density = max(0.2, min(1.0, column_density or 1.0))
+        self.cols = max(1, int(base_cols * density))
+        self.charset = charset or list("01ABCDEFGHJKLMNPQRSTUVWXYZ1234567890")
+        # pre-render glyphs in green and head brighter
+        self.glyphs = {}
+        for ch in self.charset:
+            # tonos más oscuros y menos saturados para efecto en el fondo
+            surf = self.font.render(ch, True, (0, 110, 40))
+            head = self.font.render(ch, True, (120, 190, 120))
+            self.glyphs[ch] = (surf, head)
+
+        self.columns = []
+        import random as _r
+        # espaciado uniforme entre columnas efectivas
+        spacing = self.w / self.cols
+        for i in range(self.cols):
+            speed = _r.uniform(40, 90)  # más lento
+            length = _r.randint(8, 16)
+            y = _r.uniform(-self.h, 0)
+            # populate char sequence
+            seq = [_r.choice(self.charset) for _ in range(length)]
+            self.columns.append({
+                "x": int(i * spacing),
+                "y": y,
+                "speed": speed,
+                "len": length,
+                "seq": seq,
+            })
+
+    def update(self, dt):
+        dy_factor = dt / 1000.0
+        for col in self.columns:
+            col["y"] += col["speed"] * dy_factor
+            if col["y"] - col["len"] * self.char_h > self.h:
+                # reset above the screen
+                import random as _r
+                col["y"] = _r.uniform(-self.h * 0.3, 0)
+                col["speed"] = _r.uniform(40, 90)  # mantener lento al reiniciar
+                col["len"] = _r.randint(8, 16)
+                col["seq"] = [_r.choice(self.charset) for _ in range(col["len"])]
+
+    def draw(self, surf, alpha=140):
+        overlay = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
+        for col in self.columns:
+            x = col["x"]
+            y_head = col["y"]
+            for i in range(col["len"]):
+                y = int(y_head - i * self.char_h)
+                if y < -self.char_h or y > self.h:
+                    continue
+                ch = col["seq"][i % len(col["seq"])]
+                glyph, head = self.glyphs[ch]
+                g = head if i == 0 else glyph
+                # vary alpha along the trail
+                a = max(12, 120 - i * 10)  # más tenue
+                g.set_alpha(a)
+                overlay.blit(g, (x, y))
+        overlay.set_alpha(alpha)
+        surf.blit(overlay, (0, 0))
+
 # --------- Clase para el video de inicio ----------
 class IntroVideoScreen(Screen):
     def __init__(self, game, video_path):
@@ -1427,767 +332,6 @@ class GlitchTransitionScreen(Screen):
         del arr
         self._noise.set_alpha(self._rng.randint(40, 120))
         surf.blit(self._noise, (0, 0), special_flags=pygame.BLEND_ADD)
-
-
-# --------- (NUEVA) Clase Correo ----------
-class Correo:
-    def __init__(self, es_legitimo, tipo_malicioso, contenido, remitente, asunto, razones_correctas, logo_path=None, inbox_icon_path=None, panel_logo_path=None):
-        self.es_legitimo = es_legitimo
-        self.tipo_malicioso = tipo_malicioso
-        self.contenido = contenido
-        self.remitente = remitente
-        self.asunto = asunto
-        self.razones_correctas = razones_correctas
-        # Compat: logo_path original se usa como fallback para ambos contextos
-        self.logo_path = logo_path  # legado / fallback
-        self._inbox_icon_path = inbox_icon_path
-        self._panel_logo_path = panel_logo_path
-        self.procesado = False
-        self.visible = True
-
-    def _load_scaled_image(self, path, max_size):
-        """Carga y escala una imagen desde path con cache por (path, w, h).
-        Escala forzada a (w,h) sin preservar aspecto (uso legacy)."""
-        try:
-            w, h = int(max_size[0]), int(max_size[1])
-        except Exception:
-            w, h = 36, 36
-        if path is None:
-            return None
-        if not hasattr(self, "_image_cache"):
-            self._image_cache = {}
-        key = (path, w, h)
-        if key in self._image_cache:
-            return self._image_cache[key]
-        surf = None
-        try:
-            img = pygame.image.load(path).convert_alpha()
-            surf = pygame.transform.smoothscale(img, (w, h))
-        except Exception:
-            surf = None
-        self._image_cache[key] = surf
-        return surf
-
-    def _load_image_fit(self, path, max_size, crop_transparent=True, min_alpha=10):
-        """Carga una imagen, opcionalmente recorta transparencias y la ajusta a max_size preservando aspecto.
-        Cache por (path, w, h, 'fit', crop_transparent)."""
-        try:
-            max_w, max_h = int(max_size[0]), int(max_size[1])
-        except Exception:
-            max_w, max_h = 36, 36
-        if path is None:
-            return None
-        if not hasattr(self, "_image_cache"):
-            self._image_cache = {}
-        cache_key = (path, max_w, max_h, 'fit', bool(crop_transparent))
-        if cache_key in self._image_cache:
-            return self._image_cache[cache_key]
-
-        scaled = None
-        try:
-            img = pygame.image.load(path).convert_alpha()
-            src = img
-            if crop_transparent:
-                # Recorta a los píxeles no transparentes
-                crop_rect = img.get_bounding_rect(min_alpha)
-                if crop_rect and crop_rect.w > 0 and crop_rect.h > 0:
-                    src = img.subsurface(crop_rect).copy()
-            sw, sh = src.get_width(), src.get_height()
-            if sw <= 0 or sh <= 0:
-                scaled = None
-            else:
-                scale = min(max_w / sw, max_h / sh) if max_w > 0 and max_h > 0 else 1.0
-                new_w = max(1, int(round(sw * scale)))
-                new_h = max(1, int(round(sh * scale)))
-                scaled = pygame.transform.smoothscale(src, (new_w, new_h))
-        except Exception:
-            scaled = None
-
-        self._image_cache[cache_key] = scaled
-        return scaled
-
-    def _load_image_fit_square(self, path, max_size, crop_transparent=False, min_alpha=10):
-        """Ajusta la imagen a un lienzo cuadrado (w,h) preservando aspecto (letterbox),
-        opcionalmente recortando transparencias antes de escalar. Devuelve una Surface cuadrada.
-        Cache por (path, w, h, 'fit_square', crop_transparent)."""
-        try:
-            max_w, max_h = int(max_size[0]), int(max_size[1])
-        except Exception:
-            max_w, max_h = 36, 36
-        if path is None:
-            return None
-        if not hasattr(self, "_image_cache"):
-            self._image_cache = {}
-        cache_key = (path, max_w, max_h, 'fit_square', bool(crop_transparent))
-        if cache_key in self._image_cache:
-            return self._image_cache[cache_key]
-
-        result = None
-        try:
-            img = pygame.image.load(path).convert_alpha()
-            src = img
-            if crop_transparent:
-                crop_rect = img.get_bounding_rect(min_alpha)
-                if crop_rect and crop_rect.w > 0 and crop_rect.h > 0:
-                    src = img.subsurface(crop_rect).copy()
-            sw, sh = src.get_width(), src.get_height()
-            if sw <= 0 or sh <= 0:
-                result = None
-            else:
-                scale = min(max_w / sw, max_h / sh) if max_w > 0 and max_h > 0 else 1.0
-                new_w = max(1, int(round(sw * scale)))
-                new_h = max(1, int(round(sh * scale)))
-                scaled = pygame.transform.smoothscale(src, (new_w, new_h))
-                # Componer sobre lienzo cuadrado
-                canvas = pygame.Surface((max_w, max_h), pygame.SRCALPHA)
-                off_x = (max_w - new_w) // 2
-                off_y = (max_h - new_h) // 2
-                canvas.blit(scaled, (off_x, off_y))
-                result = canvas
-        except Exception:
-            result = None
-
-        self._image_cache[cache_key] = result
-        return result
-
-    def load_logo(self, max_size=(36, 36)):
-        """Logo del panel (dentro del correo).
-        Ajusta la imagen a un lienzo cuadrado del tamaño pedido, recortando transparencias
-        para que el objeto se vea más grande sin deformar (letterbox).
-        Usa panel_logo_path o logo_path (fallback)."""
-        path = self._panel_logo_path or self.logo_path
-        return self._load_image_fit_square(path, max_size, crop_transparent=True)
-
-    def load_panel_logo(self, max_size=(64, 64)):
-        """Alias explícito para el logo del panel."""
-        return self.load_logo(max_size=max_size)
-    
-    def has_panel_logo(self) -> bool:
-        """Indica si hay ruta de logo definida para el panel (sin considerar fallas de carga)."""
-        return bool(self._panel_logo_path or self.logo_path)
-
-    def load_inbox_icon(self, max_size=(36, 36)):
-        """Icono para la lista de correos (inbox). Usa inbox_icon_path o logo_path como fallback.
-        Escala legacy (no preserva aspecto)."""
-        path = self._inbox_icon_path or self.logo_path
-        return self._load_scaled_image(path, max_size)
-
-    def load_inbox_icon_fit(self, max_size=(36, 36)):
-        """Icono para inbox que recorta transparencia y preserva aspecto al ajustar a max_size."""
-        path = self._inbox_icon_path or self.logo_path
-        return self._load_image_fit(path, max_size, crop_transparent=True)
-
-    def load_inbox_icon_square(self, max_size=(36, 36), crop_transparent=False):
-        """Devuelve un icono cuadrado del tamaño pedido, preservando aspecto (letterbox) y sin deformación.
-        Si crop_transparent=True, primero recorta zonas transparentes antes de ajustar."""
-        path = self._inbox_icon_path or self.logo_path
-        return self._load_image_fit_square(path, max_size, crop_transparent=crop_transparent)
-
-    @property
-    def dominio(self):
-        try:
-            return self.remitente.split("@", 1)[1]
-        except Exception:
-            return ""
-
-
-# --------- Clase Protagonista (Visual) ----------
-class ProtagonistaSprite:
-    def __init__(self, x, y):
-        self.image = pygame.image.load("assets/protagonista/idle.png").convert_alpha()
-        self.image = pygame.transform.scale(self.image, (200, 200))
-        self.rect = self.image.get_rect(center=(x, y))
-
-    def draw(self, surf):
-        surf.blit(self.image, self.rect)
-
-
-# --------- Clase Protagonista (lógica) ----------
-class Protagonista:
-    def __init__(self, vida=100):
-        self.vida = vida
-
-    def recibir_daño(self, daño):
-        self.vida = max(0, self.vida - daño)
-
-
-# --------- Clase Hacker (Visual) ----------
-class HackerSprite:
-    def __init__(self, x, y, image_paths, scale=(200, 200)):
-        self.frames = []
-        for path in image_paths:
-            img = pygame.image.load(path).convert_alpha()
-            img = pygame.transform.scale(img, scale)
-            self.frames.append(img)
-
-        self.rect = self.frames[0].get_rect(center=(x, y))
-        self.frame_index = 0
-        self.animation_timer = 0
-        self.frame_duration = 450
-
-    def update(self, dt):
-        self.animation_timer += dt
-        if self.animation_timer >= self.frame_duration:
-            self.animation_timer = 0
-            self.frame_index = (self.frame_index + 1) % len(self.frames)
-
-    def draw(self, surf):
-        surf.blit(self.frames[self.frame_index], self.rect)
-
-
-# --------- UI Orientada a Objetos para Nivel 1 ----------
-class ImageButton:
-    """Botón basado en imagen, con fallback a rectángulo + texto."""
-    def __init__(self, pos, size, image_paths=None, label_text=None, font=None):
-        self.rect = pygame.Rect(pos[0], pos[1], size[0], size[1])
-        self.images = []
-        self.label_text = label_text
-        self.font = font
-        if image_paths:
-            for p in image_paths:
-                try:
-                    img = pygame.image.load(p).convert_alpha()
-                    self.images.append(pygame.transform.smoothscale(img, size))
-                except Exception:
-                    continue
-
-    def draw(self, surf):
-        if self.images:
-            surf.blit(self.images[0], self.rect.topleft)
-        else:
-            # fallback simple
-            hover = self.rect.collidepoint(pygame.mouse.get_pos())
-            color = (200, 200, 100) if hover else (100, 100, 100)
-            pygame.draw.rect(surf, color, self.rect, border_radius=6)
-            if self.label_text and self.font:
-                t = self.font.render(self.label_text, True, (0, 0, 0))
-                surf.blit(t, (self.rect.centerx - t.get_width() // 2, self.rect.centery - t.get_height() // 2))
-
-    def handle_event(self, event):
-        return event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.rect.collidepoint(event.pos)
-
-
-class Inbox:
-    """Bandeja de entrada con cabecera y filas de 2 líneas (asunto + dominio), estilo del mock."""
-    def __init__(self, correos, font_title, font_row):
-        self.correos = correos
-        self.font_title = font_title  # usada para header principal
-        self.font_row = font_row      # usada para filas
-        # métricas
-        self.header_h = 28
-        self.row_h = self.font_row.get_height() * 2 + 10
-        self.vgap = 8
-        # Scroll state
-        self.desplazamiento_y = 0
-        self.alto_visible = 0
-        self.alto_total = 0
-        self.max_desplazamiento_y = 0
-        self.necesita_scrollbar = False
-        self.scrollbar_fondo_rect = None
-        self.scrollbar_manija_rect = None
-        self.esta_arrastrando = False
-        self.arrastre_inicio_y = 0
-        self.arrastre_inicio_manija_y = 0
-
-    def _calc_rects(self, hacker_rect=None):
-        # header en top debajo del HUD
-        header = pygame.Rect(20, 56, max(320, SCREEN_W - 40), self.header_h)
-        # ancho seguro evita solaparse con hacker
-        right_limit = SCREEN_W - 20
-        if hacker_rect is not None:
-            right_limit = min(right_limit, hacker_rect.left - 24)
-        width = max(320, right_limit - 20)
-        panel = pygame.Rect(20, header.bottom + 10, width, 320)
-        return header, panel
-
-    def _recalc_scroll(self, panel):
-        # Altura visible dentro del panel para filas (padding superior+inferior ~12)
-        self.alto_visible = max(0, panel.h - 24)
-        total = 0
-        for c in self.correos:
-            if not c.visible or c.procesado:
-                continue
-            total += self.row_h + self.vgap
-        if total > 0:
-            total -= self.vgap  # quitar el último espacio
-        self.alto_total = max(self.alto_visible, total)
-        self.necesita_scrollbar = self.alto_total > self.alto_visible
-        if self.necesita_scrollbar:
-            self.max_desplazamiento_y = self.alto_total - self.alto_visible
-            # Barra pegada al borde derecho interno del panel
-            bar_w = 14
-            self.scrollbar_fondo_rect = pygame.Rect(panel.right - bar_w - 6, panel.y + 8, bar_w, panel.h - 16)
-            # Altura de la manija proporcional
-            if self.alto_total > 0:
-                handle_h = max(24, int(self.alto_visible * (self.alto_visible / self.alto_total)))
-            else:
-                handle_h = self.scrollbar_fondo_rect.h
-            self.scrollbar_manija_rect = pygame.Rect(self.scrollbar_fondo_rect.x, self.scrollbar_fondo_rect.y, bar_w, handle_h)
-            # Clamp desplazamiento y actualizar manija
-            self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
-            self._actualizar_pos_manija()
-        else:
-            self.desplazamiento_y = 0
-            self.max_desplazamiento_y = 0
-            self.scrollbar_fondo_rect = None
-            self.scrollbar_manija_rect = None
-
-    def _actualizar_pos_manija(self):
-        if not self.necesita_scrollbar or not self.scrollbar_fondo_rect or not self.scrollbar_manija_rect:
-            return
-        rango = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
-        if rango <= 0:
-            self.scrollbar_manija_rect.y = self.scrollbar_fondo_rect.y
-            return
-        porcentaje = 0 if self.max_desplazamiento_y == 0 else (self.desplazamiento_y / self.max_desplazamiento_y)
-        self.scrollbar_manija_rect.y = int(self.scrollbar_fondo_rect.y + porcentaje * rango)
-
-    def handle_event(self, event, hacker_rect=None):
-        header, panel = self._calc_rects(hacker_rect)
-        self._recalc_scroll(panel)
-
-        # Área de filas útil (excluye margen y scrollbar si existe)
-        scroll_w = 18 if self.necesita_scrollbar else 0
-        filas_area = pygame.Rect(panel.x + 8, panel.y + 8, panel.w - 16 - scroll_w, panel.h - 16)
-
-        # Rueda del mouse
-        if event.type == pygame.MOUSEWHEEL:
-            if filas_area.collidepoint(pygame.mouse.get_pos()) and self.necesita_scrollbar:
-                self.desplazamiento_y -= event.y * 40
-                self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
-                self._actualizar_pos_manija()
-            return None
-
-        # Drag en scrollbar
-        if event.type == pygame.MOUSEMOTION and self.esta_arrastrando and self.necesita_scrollbar:
-            dy = event.pos[1] - self.arrastre_inicio_y
-            rango = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
-            bg_y = self.scrollbar_fondo_rect.y
-            nueva_y = max(bg_y, min(self.arrastre_inicio_manija_y + dy, bg_y + rango))
-            self.scrollbar_manija_rect.y = nueva_y
-            porcentaje = 0 if rango <= 0 else (nueva_y - bg_y) / rango
-            self.desplazamiento_y = porcentaje * self.max_desplazamiento_y
-            return None
-
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self.esta_arrastrando = False
-            return None
-
-        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
-            return None
-
-        # Clicks dentro del panel: primero scrollbar, luego filas
-        if self.necesita_scrollbar and self.scrollbar_fondo_rect:
-            if self.scrollbar_manija_rect.collidepoint(event.pos):
-                self.esta_arrastrando = True
-                self.arrastre_inicio_y = event.pos[1]
-                self.arrastre_inicio_manija_y = self.scrollbar_manija_rect.y
-                return None
-            if self.scrollbar_fondo_rect.collidepoint(event.pos):
-                # Page up/down
-                if event.pos[1] < self.scrollbar_manija_rect.y:
-                    self.desplazamiento_y -= self.alto_visible
-                else:
-                    self.desplazamiento_y += self.alto_visible
-                self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
-                self._actualizar_pos_manija()
-                return None
-
-        if not panel.collidepoint(event.pos):
-            return None
-
-        # calcular clicks por fila (considerando desplazamiento)
-        y = panel.y + 12 - self.desplazamiento_y
-        row_right_limit = panel.right - (10 + (18 if self.necesita_scrollbar else 0))
-        row_x = panel.x + 10
-        row_w = max(10, row_right_limit - row_x)
-        for c in self.correos:
-            if not c.visible or c.procesado:
-                continue
-            row = pygame.Rect(row_x, int(y), row_w, self.row_h)
-            if row.collidepoint(event.pos) and filas_area.collidepoint(event.pos):
-                return c
-            y += self.row_h + self.vgap
-        return None
-
-    def render(self, surf, hacker_rect=None):
-        header, panel = self._calc_rects(hacker_rect)
-        # Recalcular scroll según tamaño actual
-        self._recalc_scroll(panel)
-        # header pill
-        pygame.draw.rect(surf, (24, 32, 40), header, border_radius=8)
-        left_txt = self.font_row.render(">_ SYSTEM:  INBOX_ACCESS_LEVEL_1", True, (0, 255, 170))
-        surf.blit(left_txt, (header.x + 10, header.y + (header.h - left_txt.get_height()) // 2))
-        total_vis = sum(1 for c in self.correos if c.visible and not c.procesado)
-        right_txt = self.font_row.render(f"{total_vis}/{len(self.correos)} MESSAGES", True, (220, 220, 220))
-        surf.blit(right_txt, (header.right - right_txt.get_width() - 10, header.y + (header.h - right_txt.get_height()) // 2))
-        # panel
-        pygame.draw.rect(surf, (18, 22, 28), panel, border_radius=12)
-        pygame.draw.rect(surf, (80, 80, 110), panel, 1, border_radius=12)
-        # filas (con clipping y desplazamiento)
-        scroll_w = 18 if self.necesita_scrollbar else 0
-        clip_rect = pygame.Rect(panel.x + 8, panel.y + 8, panel.w - 16 - scroll_w, panel.h - 16)
-        prev_clip = surf.get_clip()
-        surf.set_clip(clip_rect)
-        y = panel.y + 12 - self.desplazamiento_y
-        mx, my = pygame.mouse.get_pos()
-        row_right_limit = panel.right - (10 + (scroll_w if self.necesita_scrollbar else 0))
-        row_x = panel.x + 10
-        row_w = max(10, row_right_limit - row_x)
-        for c in self.correos:
-            if not c.visible or c.procesado:
-                continue
-            row = pygame.Rect(row_x, int(y), row_w, self.row_h)
-            hovered = row.collidepoint(mx, my)
-            bg = (35, 42, 64) if hovered else (28, 34, 48)
-            pygame.draw.rect(surf, bg, row, border_radius=10)
-            pygame.draw.rect(surf, (60, 70, 100), row, 1, border_radius=10)
-            # padding interno
-            pad_x = 10
-            pad_y = 6
-            # reservar espacio para el cuadro de icono a la derecha (logo por correo)
-            # hacerlo más grande: altura casi toda la fila y cuadrado 1:1
-            right_box_h = max(20, row.h - 6)
-            right_box_w = right_box_h
-            right_box_gap = 8
-            inner_w = row.w - pad_x * 2 - (right_box_w + right_box_gap)
-            # asunto en color
-            subj_color = (120, 255, 140) if c.es_legitimo else (255, 120, 120)
-            subj = truncate_ellipsis(c.asunto, self.font_row, inner_w)
-            surf.blit(self.font_row.render(subj, True, subj_color), (row.x + pad_x, row.y + pad_y))
-            # dominio en gris
-            dom = truncate_ellipsis(c.remitente, self.font_row, inner_w)
-            dom_color = (200, 200, 200)
-            surf.blit(self.font_row.render(dom, True, dom_color), (row.x + pad_x, row.y + pad_y + self.font_row.get_height() + 2))
-            # icono a la derecha (logo por correo) con recorte y aspecto preservado
-            box_h = right_box_h
-            box = pygame.Rect(row.right - (right_box_w + 8), row.y + (row.h - box_h) // 2, right_box_w, box_h)
-            # 1:1 garantizado: surface cuadrada del tamaño del slot, sin deformación
-            # recorta transparencia para aprovechar más el área
-            logo = c.load_inbox_icon_square(max_size=(box_h - 4, box_h - 4), crop_transparent=True)
-            if logo:
-                lx = box.x + (box.w - logo.get_width()) // 2
-                ly = box.y + (box.h - logo.get_height()) // 2
-                surf.blit(logo, (lx, ly))
-            y += self.row_h + self.vgap
-        surf.set_clip(prev_clip)
-        # Scrollbar
-        if self.necesita_scrollbar and self.scrollbar_fondo_rect and self.scrollbar_manija_rect:
-            pygame.draw.rect(surf, (40, 40, 60), self.scrollbar_fondo_rect, border_radius=7)
-            color_manija = (180, 180, 200) if self.esta_arrastrando else (120, 120, 150)
-            pygame.draw.rect(surf, color_manija, self.scrollbar_manija_rect, border_radius=7)
-
-
-class EmailPanel:
-    """Panel del correo abierto, con barra de scroll y botones de imagen."""
-    def __init__(self, correo, font_text, font_buttons, hacker_rect_provider=None):
-        self.correo = correo
-        self.font_text = font_text
-        self.font_buttons = font_buttons
-        self._hacker_rect_provider = hacker_rect_provider
-        self.rect = pygame.Rect(150, 100, 500, 350)
-        # Tamaño del logo mostrado dentro del correo (no afecta iconos del inbox)
-        # Volver al slot original para mantener el layout.
-        self.panel_logo_size = (64, 64)
-
-        # --- (CORREGIDO) Solo el contenido va en el cuerpo ---
-        self.texto_completo = self.correo.contenido
-        self.texto_actual = self.texto_completo # Desactivar typewriter para el scroll
-        self.tiempo_escritura = 0
-        self.velocidad_escritura = 30 
-
-        # botones
-        self.btn_back = ImageButton((0, 0), (80, 30), label_text="Volver", font=font_text)
-        self.btn_responder = ImageButton((0, 0), (160, 44),
-            image_paths=["assets/btn_responder.png", "assets/btn_reply.png"], label_text="Responder", font=font_buttons)
-        self.btn_eliminar = ImageButton((0, 0), (160, 44),
-            image_paths=["assets/btn_eliminar.png", "assets/btn_delete.png"], label_text="Eliminar", font=font_buttons)
-        self.btn_reportar = ImageButton((0, 0), (160, 44),
-            image_paths=["assets/btn_reportar.png", "assets/btn_report.png"], label_text="Reportar", font=font_buttons)
-
-        # flujo de razones
-        self.mode = "reading"
-        self.razones_sel = []
-        self.btn_razones = [
-            {"rect": pygame.Rect(0, 0, 120, 30), "razon": "Logo", "texto": "Logo"},
-            {"rect": pygame.Rect(0, 0, 120, 30), "razon": "Dominio", "texto": "Dominio"},
-            {"rect": pygame.Rect(0, 0, 120, 30), "razon": "Texto", "texto": "Texto"},
-        ]
-        self.btn_confirmar = pygame.Rect(0, 0, 120, 38)
-        self._accion_pendiente = None
-
-        # --- (NUEVO) Estado de la barra de Scroll (en español) ---
-        self._area_texto_rect = pygame.Rect(0, 0, 0, 0)
-        self.desplazamiento_y = 0
-        self.alto_linea = self.font_text.get_height() + 5
-        self.lineas_envueltas_completas = []
-        self.alto_total_texto = 0
-        self.alto_visible_texto = 0
-        self.max_desplazamiento_y = 0
-        self.scrollbar_fondo_rect = None
-        self.scrollbar_manija_rect = None
-        self.necesita_scrollbar = False
-        self.esta_arrastrando = False
-        self.arrastre_inicio_y = 0
-        self.arrastre_inicio_manija_y = 0
-
-        self._calcular_layout() # Calcular layout y scroll
-
-    def _calcular_layout(self):
-        """Calcula el área de texto y la configuración de la barra de scroll."""
-        header_h = 24
-        show_logo = self.correo.has_panel_logo()
-        logo = self.correo.load_logo(max_size=self.panel_logo_size) if show_logo else None
-        used_logo_h = logo.get_height() if logo else (self.panel_logo_size[1] if show_logo else 0)
-        add_after_header = (used_logo_h + 14) if show_logo else 0
-        top_y = self.rect.y + 8 + header_h + 10 + add_after_header
-        
-        # Área de texto es más angosta para dar espacio al scrollbar
-        text_w = self.rect.w - 20 - 18 # 18px para scrollbar + padding
-        text_h = self.rect.bottom - 10 - top_y
-        self._area_texto_rect = pygame.Rect(self.rect.x + 10, top_y, text_w, text_h)
-
-        # Calcular scroll
-        self.alto_visible_texto = self._area_texto_rect.h
-        self.lineas_envueltas_completas = wrap_ellipsis(self.texto_completo, self.font_text, text_w, max_h=None) # Usar la función modificada
-        self.alto_total_texto = max(len(self.lineas_envueltas_completas) * self.alto_linea, self.alto_visible_texto)
-        self.necesita_scrollbar = self.alto_total_texto > self.alto_visible_texto
-
-        if self.necesita_scrollbar:
-            self.max_desplazamiento_y = self.alto_total_texto - self.alto_visible_texto
-            self.scrollbar_fondo_rect = pygame.Rect(self._area_texto_rect.right + 4, self._area_texto_rect.y, 15, self._area_texto_rect.h)
-            
-            handle_h = max(20, self.alto_visible_texto * (self.alto_visible_texto / self.alto_total_texto))
-            self.scrollbar_manija_rect = pygame.Rect(self.scrollbar_fondo_rect.x, self.scrollbar_fondo_rect.y, 15, handle_h)
-            self._actualizar_pos_manija() # Sincronizar posición
-
-    def _actualizar_pos_manija(self):
-        """Actualiza la posición Y de la manija del scrollbar basado en self.desplazamiento_y"""
-        if not self.necesita_scrollbar:
-            return
-        porcentaje_scroll = 0
-        if self.max_desplazamiento_y > 0:
-            porcentaje_scroll = self.desplazamiento_y / self.max_desplazamiento_y
-        
-        rango_y_manija = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
-        self.scrollbar_manija_rect.y = self.scrollbar_fondo_rect.y + (porcentaje_scroll * rango_y_manija)
-
-    def update(self, dt):
-        # Lógica de arrastre del scroll
-        if self.esta_arrastrando:
-            mx, my = pygame.mouse.get_pos()
-            
-            # Movimiento relativo del mouse
-            dy = my - self.arrastre_inicio_y
-            
-            # Rango de movimiento de la manija
-            rango_y_manija = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
-            bg_y = self.scrollbar_fondo_rect.y
-
-            # Nueva posición de la manija
-            nueva_y_manija = self.arrastre_inicio_manija_y + dy
-            # Limitar a los bordes del scrollbar_fondo
-            nueva_y_manija = max(bg_y, min(nueva_y_manija, bg_y + rango_y_manija))
-            
-            # Calcular el porcentaje de scroll basado en la posición de la manija
-            porcentaje_scroll = 0
-            if rango_y_manija > 0:
-                porcentaje_scroll = (nueva_y_manija - bg_y) / rango_y_manija
-            
-            # Actualizar el desplazamiento_y (pixel offset del texto)
-            self.desplazamiento_y = porcentaje_scroll * self.max_desplazamiento_y
-            
-            self._actualizar_pos_manija() # Sincronizar la manija visualmente
-
-    def handle_event(self, event):
-        # --- (NUEVO) Manejo de Rueda del Mouse ---
-        if event.type == pygame.MOUSEWHEEL and self.necesita_scrollbar:
-             # Solo scrollear si el mouse está sobre el panel de texto
-            if self._area_texto_rect.collidepoint(pygame.mouse.get_pos()):
-                self.desplazamiento_y -= event.y * 30 # event.y es 1 o -1. 30 es velocidad
-                self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
-                self._actualizar_pos_manija()
-                return None # Consumir el evento
-
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # --- (NUEVO) Manejo de Clic en Scrollbar ---
-            if self.necesita_scrollbar:
-                if self.scrollbar_manija_rect.collidepoint(event.pos):
-                    self.esta_arrastrando = True
-                    self.arrastre_inicio_y = event.pos[1]
-                    self.arrastre_inicio_manija_y = self.scrollbar_manija_rect.y
-                    return None # Consumir evento
-                elif self.scrollbar_fondo_rect.collidepoint(event.pos):
-                    # Clic en la barra (no en la manija) - Paginación
-                    if event.pos[1] < self.scrollbar_manija_rect.y:
-                        self.desplazamiento_y -= self.alto_visible_texto # Page Up
-                    else:
-                        self.desplazamiento_y += self.alto_visible_texto # Page Down
-                    self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
-                    self._actualizar_pos_manija()
-                    return None # Consumir evento
-
-            # (Existente) Manejo de botones de acción
-            if self.btn_back.handle_event(event):
-                return {"type": "back"}
-            if self.mode == "reading":
-                if self.btn_responder.handle_event(event):
-                    return {"type": "accion", "accion": "responder"}
-                if self.btn_eliminar.handle_event(event):
-                    self.mode = "reasons"; self._accion_pendiente = "eliminar"; return None
-                if self.btn_reportar.handle_event(event):
-                    self.mode = "reasons"; self._accion_pendiente = "reportar"; return None
-            else:
-                for b in self.btn_razones:
-                    if b["rect"].collidepoint(event.pos):
-                        r = b["razon"]
-                        if r in self.razones_sel:
-                            self.razones_sel.remove(r)
-                        else:
-                            self.razones_sel.append(r)
-                if self.btn_confirmar.collidepoint(event.pos):
-                    acc = self._accion_pendiente
-                    self.mode = "reading"
-                    return {"type": "reasons_confirm", "accion": acc, "razones": list(self.razones_sel)}
-
-        # --- (NUEVO) Manejo de Soltar Clic ---
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self.esta_arrastrando = False
-
-        return None
-
-    def render(self, surf):
-        # panel
-        pygame.draw.rect(surf, (30, 30, 50), self.rect, border_radius=10)
-        pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=10)
-        
-        # --- (CORREGIDO) Header ahora muestra el ASUNTO ---
-        header_rect = pygame.Rect(self.rect.x + 8, self.rect.y + 8, self.rect.w - 16, 24)
-        pygame.draw.rect(surf, (22, 22, 34), header_rect, border_radius=8)
-        
-        subj_str = truncate_ellipsis(self.correo.asunto, self.font_text, header_rect.w - 12)
-        subj_surf = self.font_text.render(subj_str, True, (220, 220, 220))
-        
-        # Centrar el asunto
-        subj_x = header_rect.centerx - subj_surf.get_width() // 2
-        subj_y = header_rect.centery - subj_surf.get_height() // 2
-        surf.blit(subj_surf, (subj_x, subj_y))
-        # --- FIN CORRECCIÓN HEADER ---
-
-        # logo centrado arriba
-        show_logo = self.correo.has_panel_logo()
-        logo = self.correo.load_logo(max_size=self.panel_logo_size) if show_logo else None
-        logo_y = header_rect.bottom + 10
-        if logo:
-            logo_x = self.rect.centerx - logo.get_width() // 2
-            surf.blit(logo, (logo_x, logo_y))
-            logo_rect = pygame.Rect(logo_x, logo_y, logo.get_width(), logo.get_height())
-        elif show_logo:
-            # Placeholder si no hay logo, del mismo tamaño objetivo
-            ph_w, ph_h = self.panel_logo_size
-            logo_rect = pygame.Rect(self.rect.centerx - ph_w // 2, logo_y, ph_w, ph_h)
-            pygame.draw.rect(surf, (60, 70, 90), logo_rect)
-            pygame.draw.rect(surf, (220, 220, 235), logo_rect, 2)
-        else:
-            # No reservar espacio ni dibujar placeholder si no hay logo configurado
-            logo_rect = pygame.Rect(self.rect.centerx, logo_y, 0, 0)
-
-        # --- (CORREGIDO) Renderizado de Texto con Scroll y Clipping ---
-        text_x = self._area_texto_rect.x
-        text_y_start = self._area_texto_rect.y
-        text_h = self._area_texto_rect.h
-
-        if text_h > 0:
-            # Establecer clip para asegurar que no se dibuje fuera
-            prev_clip = surf.get_clip()
-            clip_rect = self._area_texto_rect.copy() # Usar el rect del área de texto
-            surf.set_clip(clip_rect)
-            
-            y_pos = text_y_start - self.desplazamiento_y # Aplicar offset de scroll
-            
-            for line in self.lineas_envueltas_completas:
-                # Optimización: no dibujar líneas que están completamente fuera de la vista
-                if y_pos + self.alto_linea < text_y_start:
-                    y_pos += self.alto_linea
-                    continue
-                if y_pos > text_y_start + text_h:
-                    break
-
-                t = self.font_text.render(line, True, (255, 255, 255))
-                surf.blit(t, (text_x, y_pos))
-                y_pos += self.alto_linea
-                
-            surf.set_clip(prev_clip) # Restaurar clip
-        
-        # --- (NUEVO) Renderizar Scrollbar ---
-        if self.necesita_scrollbar:
-            # Fondo de la barra
-            pygame.draw.rect(surf, (40, 40, 60), self.scrollbar_fondo_rect, border_radius=7)
-            # Manija (handle)
-            color_manija = (180, 180, 200) if self.esta_arrastrando else (120, 120, 150)
-            pygame.draw.rect(surf, color_manija, self.scrollbar_manija_rect, border_radius=7)
-        # --- FIN RENDER SCROLLBAR ---
-        # layout botones: colocar 'Volver' pegado al borde izquierdo del panel, a la altura del logo
-        btn_w, btn_h = 80, 30
-        left_pad = 10
-        bx = self.rect.x + left_pad
-        by = max(header_rect.bottom + 4, logo_rect.y)
-        self.btn_back.rect.update(bx, by, btn_w, btn_h)
-        self.btn_back.draw(surf)
-
-        base_y = self.rect.bottom + 12
-        self.btn_responder.rect.update(self.rect.x, base_y, 160, 44)
-        self.btn_eliminar.rect.update(self.rect.x + 170, base_y, 160, 44)
-        self.btn_reportar.rect.update(self.rect.x + 340, base_y, 160, 44)
-        self.btn_responder.draw(surf)
-        self.btn_eliminar.draw(surf)
-        self.btn_reportar.draw(surf)
-
-        # overlay de razones
-        if self.mode == "reasons":
-            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 120))
-            surf.blit(overlay, (0, 0))
-            bx = self.rect.x; by = self.rect.bottom + 60
-            for i, b in enumerate(self.btn_razones):
-                b["rect"].update(bx + i * 140, by, 120, 30)
-                color = (100, 200, 100) if b["razon"] in self.razones_sel else (100, 100, 100)
-                pygame.draw.rect(surf, color, b["rect"], border_radius=5)
-                s = self.font_text.render(b["texto"], True, (0, 0, 0))
-                surf.blit(s, (b["rect"].centerx - s.get_width() // 2, b["rect"].centery - s.get_height() // 2))
-            self.btn_confirmar.update(self.rect.x + 2*140, by + 40, 120, 38)
-            pygame.draw.rect(surf, (100, 200, 100), self.btn_confirmar, border_radius=5)
-            s = self.font_buttons.render("Confirmar", True, (0, 0, 0))
-            surf.blit(s, (self.btn_confirmar.centerx - s.get_width() // 2, self.btn_confirmar.centery - s.get_height() // 2))
-
-# --------- Clase Hacker (lógica) ----------
-class HackerLogic:
-    def __init__(self, vida, tipo_ataque: dict, probabilidad: dict):
-        self.vida = vida
-        self.tipo_ataque = tipo_ataque
-        self.probabilidad = probabilidad
-        self.ataque_actual = None
-        self.turno = 0
-
-    def preparar_ataque(self):
-        opciones = list(self.probabilidad.keys())
-        pesos = [self.probabilidad[k] for k in opciones]
-        elegido = random.choices(opciones, weights=pesos, k=1)[0]
-        daño = self.tipo_ataque.get(elegido, 0)
-        self.ataque_actual = {"nombre": elegido, "daño": daño}
-        return self.ataque_actual
-
-    def lanzar_ataque(self, objetivo: Protagonista):
-        if not self.ataque_actual:
-            return self.turno
-
-        daño = self.ataque_actual["daño"]
-        objetivo.recibir_daño(daño)
-        self.turno += 1
-        atac = self.ataque_actual
-        self.ataque_actual = None
-        return self.turno, atac
-
 
 # --------- (NUEVA) BaseLevelScreen con elementos esenciales ----------
 class BaseLevelScreen(Screen):
@@ -3227,7 +1371,2004 @@ class Level1Screen(BaseLevelScreen):
             feedback_text = self.small_font.render(self.last_feedback, True, (255, 255, 100))
             surf.blit(feedback_text, (SCREEN_W // 2 - feedback_text.get_width() // 2, SCREEN_H - 40))
 
-# --------- Clase principal del juego ----------
+
+# --------- Clase Protagonista (Visual) ----------
+class ProtagonistaSprite:
+    def __init__(self, x, y):
+        self.image = pygame.image.load("assets/protagonista/idle.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (200, 200))
+        self.rect = self.image.get_rect(center=(x, y))
+
+    def draw(self, surf):
+        surf.blit(self.image, self.rect)
+
+
+# --------- Clase Protagonista (lógica) ----------
+class Protagonista:
+    def __init__(self, vida=100):
+        self.vida = vida
+
+    def recibir_daño(self, daño):
+        self.vida = max(0, self.vida - daño)
+
+
+# --------- Clase Hacker (Visual) ----------
+class HackerSprite:
+    def __init__(self, x, y, image_paths, scale=(200, 200)):
+        self.frames = []
+        for path in image_paths:
+            img = pygame.image.load(path).convert_alpha()
+            img = pygame.transform.scale(img, scale)
+            self.frames.append(img)
+
+        self.rect = self.frames[0].get_rect(center=(x, y))
+        self.frame_index = 0
+        self.animation_timer = 0
+        self.frame_duration = 450
+
+    def update(self, dt):
+        self.animation_timer += dt
+        if self.animation_timer >= self.frame_duration:
+            self.animation_timer = 0
+            self.frame_index = (self.frame_index + 1) % len(self.frames)
+
+    def draw(self, surf):
+        surf.blit(self.frames[self.frame_index], self.rect)
+
+
+# --------- Clase Hacker (lógica) ----------
+class HackerLogic:
+    def __init__(self, vida, tipo_ataque: dict, probabilidad: dict):
+        self.vida = vida
+        self.tipo_ataque = tipo_ataque
+        self.probabilidad = probabilidad
+        self.ataque_actual = None
+        self.turno = 0
+
+    def preparar_ataque(self):
+        opciones = list(self.probabilidad.keys())
+        pesos = [self.probabilidad[k] for k in opciones]
+        elegido = random.choices(opciones, weights=pesos, k=1)[0]
+        daño = self.tipo_ataque.get(elegido, 0)
+        self.ataque_actual = {"nombre": elegido, "daño": daño}
+        return self.ataque_actual
+
+    def lanzar_ataque(self, objetivo: Protagonista):
+        if not self.ataque_actual:
+            return self.turno
+
+        daño = self.ataque_actual["daño"]
+        objetivo.recibir_daño(daño)
+        self.turno += 1
+        atac = self.ataque_actual
+        self.ataque_actual = None
+        return self.turno, atac
+
+# --------- UI Orientada a Objetos para Nivel 1 ----------
+class ImageButton:
+    """Botón basado en imagen, con fallback a rectángulo + texto."""
+    def __init__(self, pos, size, image_paths=None, label_text=None, font=None):
+        self.rect = pygame.Rect(pos[0], pos[1], size[0], size[1])
+        self.images = []
+        self.label_text = label_text
+        self.font = font
+        if image_paths:
+            for p in image_paths:
+                try:
+                    img = pygame.image.load(p).convert_alpha()
+                    self.images.append(pygame.transform.smoothscale(img, size))
+                except Exception:
+                    continue
+
+    def draw(self, surf):
+        if self.images:
+            surf.blit(self.images[0], self.rect.topleft)
+        else:
+            # fallback simple
+            hover = self.rect.collidepoint(pygame.mouse.get_pos())
+            color = (200, 200, 100) if hover else (100, 100, 100)
+            pygame.draw.rect(surf, color, self.rect, border_radius=6)
+            if self.label_text and self.font:
+                t = self.font.render(self.label_text, True, (0, 0, 0))
+                surf.blit(t, (self.rect.centerx - t.get_width() // 2, self.rect.centery - t.get_height() // 2))
+
+    def handle_event(self, event):
+        return event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.rect.collidepoint(event.pos)
+
+
+# --------- (NUEVA) Clase Correo ----------
+class Correo:
+    def __init__(self, es_legitimo, tipo_malicioso, contenido, remitente, asunto, razones_correctas, logo_path=None, inbox_icon_path=None, panel_logo_path=None):
+        self.es_legitimo = es_legitimo
+        self.tipo_malicioso = tipo_malicioso
+        self.contenido = contenido
+        self.remitente = remitente
+        self.asunto = asunto
+        self.razones_correctas = razones_correctas
+        # Compat: logo_path original se usa como fallback para ambos contextos
+        self.logo_path = logo_path  # legado / fallback
+        self._inbox_icon_path = inbox_icon_path
+        self._panel_logo_path = panel_logo_path
+        self.procesado = False
+        self.visible = True
+
+    def _load_scaled_image(self, path, max_size):
+        """Carga y escala una imagen desde path con cache por (path, w, h).
+        Escala forzada a (w,h) sin preservar aspecto (uso legacy)."""
+        try:
+            w, h = int(max_size[0]), int(max_size[1])
+        except Exception:
+            w, h = 36, 36
+        if path is None:
+            return None
+        if not hasattr(self, "_image_cache"):
+            self._image_cache = {}
+        key = (path, w, h)
+        if key in self._image_cache:
+            return self._image_cache[key]
+        surf = None
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            surf = pygame.transform.smoothscale(img, (w, h))
+        except Exception:
+            surf = None
+        self._image_cache[key] = surf
+        return surf
+
+    def _load_image_fit(self, path, max_size, crop_transparent=True, min_alpha=10):
+        """Carga una imagen, opcionalmente recorta transparencias y la ajusta a max_size preservando aspecto.
+        Cache por (path, w, h, 'fit', crop_transparent)."""
+        try:
+            max_w, max_h = int(max_size[0]), int(max_size[1])
+        except Exception:
+            max_w, max_h = 36, 36
+        if path is None:
+            return None
+        if not hasattr(self, "_image_cache"):
+            self._image_cache = {}
+        cache_key = (path, max_w, max_h, 'fit', bool(crop_transparent))
+        if cache_key in self._image_cache:
+            return self._image_cache[cache_key]
+
+        scaled = None
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            src = img
+            if crop_transparent:
+                # Recorta a los píxeles no transparentes
+                crop_rect = img.get_bounding_rect(min_alpha)
+                if crop_rect and crop_rect.w > 0 and crop_rect.h > 0:
+                    src = img.subsurface(crop_rect).copy()
+            sw, sh = src.get_width(), src.get_height()
+            if sw <= 0 or sh <= 0:
+                scaled = None
+            else:
+                scale = min(max_w / sw, max_h / sh) if max_w > 0 and max_h > 0 else 1.0
+                new_w = max(1, int(round(sw * scale)))
+                new_h = max(1, int(round(sh * scale)))
+                scaled = pygame.transform.smoothscale(src, (new_w, new_h))
+        except Exception:
+            scaled = None
+
+        self._image_cache[cache_key] = scaled
+        return scaled
+
+    def _load_image_fit_square(self, path, max_size, crop_transparent=False, min_alpha=10):
+        """Ajusta la imagen a un lienzo cuadrado (w,h) preservando aspecto (letterbox),
+        opcionalmente recortando transparencias antes de escalar. Devuelve una Surface cuadrada.
+        Cache por (path, w, h, 'fit_square', crop_transparent)."""
+        try:
+            max_w, max_h = int(max_size[0]), int(max_size[1])
+        except Exception:
+            max_w, max_h = 36, 36
+        if path is None:
+            return None
+        if not hasattr(self, "_image_cache"):
+            self._image_cache = {}
+        cache_key = (path, max_w, max_h, 'fit_square', bool(crop_transparent))
+        if cache_key in self._image_cache:
+            return self._image_cache[cache_key]
+
+        result = None
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            src = img
+            if crop_transparent:
+                crop_rect = img.get_bounding_rect(min_alpha)
+                if crop_rect and crop_rect.w > 0 and crop_rect.h > 0:
+                    src = img.subsurface(crop_rect).copy()
+            sw, sh = src.get_width(), src.get_height()
+            if sw <= 0 or sh <= 0:
+                result = None
+            else:
+                scale = min(max_w / sw, max_h / sh) if max_w > 0 and max_h > 0 else 1.0
+                new_w = max(1, int(round(sw * scale)))
+                new_h = max(1, int(round(sh * scale)))
+                scaled = pygame.transform.smoothscale(src, (new_w, new_h))
+                # Componer sobre lienzo cuadrado
+                canvas = pygame.Surface((max_w, max_h), pygame.SRCALPHA)
+                off_x = (max_w - new_w) // 2
+                off_y = (max_h - new_h) // 2
+                canvas.blit(scaled, (off_x, off_y))
+                result = canvas
+        except Exception:
+            result = None
+
+        self._image_cache[cache_key] = result
+        return result
+
+    def load_logo(self, max_size=(36, 36)):
+        """Logo del panel (dentro del correo).
+        Ajusta la imagen a un lienzo cuadrado del tamaño pedido, recortando transparencias
+        para que el objeto se vea más grande sin deformar (letterbox).
+        Usa panel_logo_path o logo_path (fallback)."""
+        path = self._panel_logo_path or self.logo_path
+        return self._load_image_fit_square(path, max_size, crop_transparent=True)
+
+    def load_panel_logo(self, max_size=(64, 64)):
+        """Alias explícito para el logo del panel."""
+        return self.load_logo(max_size=max_size)
+    
+    def has_panel_logo(self) -> bool:
+        """Indica si hay ruta de logo definida para el panel (sin considerar fallas de carga)."""
+        return bool(self._panel_logo_path or self.logo_path)
+
+    def load_inbox_icon(self, max_size=(36, 36)):
+        """Icono para la lista de correos (inbox). Usa inbox_icon_path o logo_path como fallback.
+        Escala legacy (no preserva aspecto)."""
+        path = self._inbox_icon_path or self.logo_path
+        return self._load_scaled_image(path, max_size)
+
+    def load_inbox_icon_fit(self, max_size=(36, 36)):
+        """Icono para inbox que recorta transparencia y preserva aspecto al ajustar a max_size."""
+        path = self._inbox_icon_path or self.logo_path
+        return self._load_image_fit(path, max_size, crop_transparent=True)
+
+    def load_inbox_icon_square(self, max_size=(36, 36), crop_transparent=False):
+        """Devuelve un icono cuadrado del tamaño pedido, preservando aspecto (letterbox) y sin deformación.
+        Si crop_transparent=True, primero recorta zonas transparentes antes de ajustar."""
+        path = self._inbox_icon_path or self.logo_path
+        return self._load_image_fit_square(path, max_size, crop_transparent=crop_transparent)
+
+    @property
+    def dominio(self):
+        try:
+            return self.remitente.split("@", 1)[1]
+        except Exception:
+            return ""
+
+class Inbox:
+    """Bandeja de entrada con cabecera y filas de 2 líneas (asunto + dominio), estilo del mock."""
+    def __init__(self, correos, font_title, font_row):
+        self.correos = correos
+        self.font_title = font_title  # usada para header principal
+        self.font_row = font_row      # usada para filas
+        # métricas
+        self.header_h = 28
+        self.row_h = self.font_row.get_height() * 2 + 10
+        self.vgap = 8
+        # Scroll state
+        self.desplazamiento_y = 0
+        self.alto_visible = 0
+        self.alto_total = 0
+        self.max_desplazamiento_y = 0
+        self.necesita_scrollbar = False
+        self.scrollbar_fondo_rect = None
+        self.scrollbar_manija_rect = None
+        self.esta_arrastrando = False
+        self.arrastre_inicio_y = 0
+        self.arrastre_inicio_manija_y = 0
+
+    def _calc_rects(self, hacker_rect=None):
+        # header en top debajo del HUD
+        header = pygame.Rect(20, 56, max(320, SCREEN_W - 40), self.header_h)
+        # ancho seguro evita solaparse con hacker
+        right_limit = SCREEN_W - 20
+        if hacker_rect is not None:
+            right_limit = min(right_limit, hacker_rect.left - 24)
+        width = max(320, right_limit - 20)
+        panel = pygame.Rect(20, header.bottom + 10, width, 320)
+        return header, panel
+
+    def _recalc_scroll(self, panel):
+        # Altura visible dentro del panel para filas (padding superior+inferior ~12)
+        self.alto_visible = max(0, panel.h - 24)
+        total = 0
+        for c in self.correos:
+            if not c.visible or c.procesado:
+                continue
+            total += self.row_h + self.vgap
+        if total > 0:
+            total -= self.vgap  # quitar el último espacio
+        self.alto_total = max(self.alto_visible, total)
+        self.necesita_scrollbar = self.alto_total > self.alto_visible
+        if self.necesita_scrollbar:
+            self.max_desplazamiento_y = self.alto_total - self.alto_visible
+            # Barra pegada al borde derecho interno del panel
+            bar_w = 14
+            self.scrollbar_fondo_rect = pygame.Rect(panel.right - bar_w - 6, panel.y + 8, bar_w, panel.h - 16)
+            # Altura de la manija proporcional
+            if self.alto_total > 0:
+                handle_h = max(24, int(self.alto_visible * (self.alto_visible / self.alto_total)))
+            else:
+                handle_h = self.scrollbar_fondo_rect.h
+            self.scrollbar_manija_rect = pygame.Rect(self.scrollbar_fondo_rect.x, self.scrollbar_fondo_rect.y, bar_w, handle_h)
+            # Clamp desplazamiento y actualizar manija
+            self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+            self._actualizar_pos_manija()
+        else:
+            self.desplazamiento_y = 0
+            self.max_desplazamiento_y = 0
+            self.scrollbar_fondo_rect = None
+            self.scrollbar_manija_rect = None
+
+    def _actualizar_pos_manija(self):
+        if not self.necesita_scrollbar or not self.scrollbar_fondo_rect or not self.scrollbar_manija_rect:
+            return
+        rango = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
+        if rango <= 0:
+            self.scrollbar_manija_rect.y = self.scrollbar_fondo_rect.y
+            return
+        porcentaje = 0 if self.max_desplazamiento_y == 0 else (self.desplazamiento_y / self.max_desplazamiento_y)
+        self.scrollbar_manija_rect.y = int(self.scrollbar_fondo_rect.y + porcentaje * rango)
+
+    def handle_event(self, event, hacker_rect=None):
+        header, panel = self._calc_rects(hacker_rect)
+        self._recalc_scroll(panel)
+
+        # Área de filas útil (excluye margen y scrollbar si existe)
+        scroll_w = 18 if self.necesita_scrollbar else 0
+        filas_area = pygame.Rect(panel.x + 8, panel.y + 8, panel.w - 16 - scroll_w, panel.h - 16)
+
+        # Rueda del mouse
+        if event.type == pygame.MOUSEWHEEL:
+            if filas_area.collidepoint(pygame.mouse.get_pos()) and self.necesita_scrollbar:
+                self.desplazamiento_y -= event.y * 40
+                self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+                self._actualizar_pos_manija()
+            return None
+
+        # Drag en scrollbar
+        if event.type == pygame.MOUSEMOTION and self.esta_arrastrando and self.necesita_scrollbar:
+            dy = event.pos[1] - self.arrastre_inicio_y
+            rango = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
+            bg_y = self.scrollbar_fondo_rect.y
+            nueva_y = max(bg_y, min(self.arrastre_inicio_manija_y + dy, bg_y + rango))
+            self.scrollbar_manija_rect.y = nueva_y
+            porcentaje = 0 if rango <= 0 else (nueva_y - bg_y) / rango
+            self.desplazamiento_y = porcentaje * self.max_desplazamiento_y
+            return None
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.esta_arrastrando = False
+            return None
+
+        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+            return None
+
+        # Clicks dentro del panel: primero scrollbar, luego filas
+        if self.necesita_scrollbar and self.scrollbar_fondo_rect:
+            if self.scrollbar_manija_rect.collidepoint(event.pos):
+                self.esta_arrastrando = True
+                self.arrastre_inicio_y = event.pos[1]
+                self.arrastre_inicio_manija_y = self.scrollbar_manija_rect.y
+                return None
+            if self.scrollbar_fondo_rect.collidepoint(event.pos):
+                # Page up/down
+                if event.pos[1] < self.scrollbar_manija_rect.y:
+                    self.desplazamiento_y -= self.alto_visible
+                else:
+                    self.desplazamiento_y += self.alto_visible
+                self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+                self._actualizar_pos_manija()
+                return None
+
+        if not panel.collidepoint(event.pos):
+            return None
+
+        # calcular clicks por fila (considerando desplazamiento)
+        y = panel.y + 12 - self.desplazamiento_y
+        row_right_limit = panel.right - (10 + (18 if self.necesita_scrollbar else 0))
+        row_x = panel.x + 10
+        row_w = max(10, row_right_limit - row_x)
+        for c in self.correos:
+            if not c.visible or c.procesado:
+                continue
+            row = pygame.Rect(row_x, int(y), row_w, self.row_h)
+            if row.collidepoint(event.pos) and filas_area.collidepoint(event.pos):
+                return c
+            y += self.row_h + self.vgap
+        return None
+
+    def render(self, surf, hacker_rect=None):
+        header, panel = self._calc_rects(hacker_rect)
+        # Recalcular scroll según tamaño actual
+        self._recalc_scroll(panel)
+        # header pill
+        pygame.draw.rect(surf, (24, 32, 40), header, border_radius=8)
+        left_txt = self.font_row.render(">_ SYSTEM:  INBOX_ACCESS_LEVEL_1", True, (0, 255, 170))
+        surf.blit(left_txt, (header.x + 10, header.y + (header.h - left_txt.get_height()) // 2))
+        total_vis = sum(1 for c in self.correos if c.visible and not c.procesado)
+        right_txt = self.font_row.render(f"{total_vis}/{len(self.correos)} MESSAGES", True, (220, 220, 220))
+        surf.blit(right_txt, (header.right - right_txt.get_width() - 10, header.y + (header.h - right_txt.get_height()) // 2))
+        # panel
+        pygame.draw.rect(surf, (18, 22, 28), panel, border_radius=12)
+        pygame.draw.rect(surf, (80, 80, 110), panel, 1, border_radius=12)
+        # filas (con clipping y desplazamiento)
+        scroll_w = 18 if self.necesita_scrollbar else 0
+        clip_rect = pygame.Rect(panel.x + 8, panel.y + 8, panel.w - 16 - scroll_w, panel.h - 16)
+        prev_clip = surf.get_clip()
+        surf.set_clip(clip_rect)
+        y = panel.y + 12 - self.desplazamiento_y
+        mx, my = pygame.mouse.get_pos()
+        row_right_limit = panel.right - (10 + (scroll_w if self.necesita_scrollbar else 0))
+        row_x = panel.x + 10
+        row_w = max(10, row_right_limit - row_x)
+        for c in self.correos:
+            if not c.visible or c.procesado:
+                continue
+            row = pygame.Rect(row_x, int(y), row_w, self.row_h)
+            hovered = row.collidepoint(mx, my)
+            bg = (35, 42, 64) if hovered else (28, 34, 48)
+            pygame.draw.rect(surf, bg, row, border_radius=10)
+            pygame.draw.rect(surf, (60, 70, 100), row, 1, border_radius=10)
+            # padding interno
+            pad_x = 10
+            pad_y = 6
+            # reservar espacio para el cuadro de icono a la derecha (logo por correo)
+            # hacerlo más grande: altura casi toda la fila y cuadrado 1:1
+            right_box_h = max(20, row.h - 6)
+            right_box_w = right_box_h
+            right_box_gap = 8
+            inner_w = row.w - pad_x * 2 - (right_box_w + right_box_gap)
+            # asunto en color
+            subj_color = (120, 255, 140) if c.es_legitimo else (255, 120, 120)
+            subj = truncate_ellipsis(c.asunto, self.font_row, inner_w)
+            surf.blit(self.font_row.render(subj, True, subj_color), (row.x + pad_x, row.y + pad_y))
+            # dominio en gris
+            dom = truncate_ellipsis(c.remitente, self.font_row, inner_w)
+            dom_color = (200, 200, 200)
+            surf.blit(self.font_row.render(dom, True, dom_color), (row.x + pad_x, row.y + pad_y + self.font_row.get_height() + 2))
+            # icono a la derecha (logo por correo) con recorte y aspecto preservado
+            box_h = right_box_h
+            box = pygame.Rect(row.right - (right_box_w + 8), row.y + (row.h - box_h) // 2, right_box_w, box_h)
+            # 1:1 garantizado: surface cuadrada del tamaño del slot, sin deformación
+            # recorta transparencia para aprovechar más el área
+            logo = c.load_inbox_icon_square(max_size=(box_h - 4, box_h - 4), crop_transparent=True)
+            if logo:
+                lx = box.x + (box.w - logo.get_width()) // 2
+                ly = box.y + (box.h - logo.get_height()) // 2
+                surf.blit(logo, (lx, ly))
+            y += self.row_h + self.vgap
+        surf.set_clip(prev_clip)
+        # Scrollbar
+        if self.necesita_scrollbar and self.scrollbar_fondo_rect and self.scrollbar_manija_rect:
+            pygame.draw.rect(surf, (40, 40, 60), self.scrollbar_fondo_rect, border_radius=7)
+            color_manija = (180, 180, 200) if self.esta_arrastrando else (120, 120, 150)
+            pygame.draw.rect(surf, color_manija, self.scrollbar_manija_rect, border_radius=7)
+
+
+class EmailPanel:
+    """Panel del correo abierto, con barra de scroll y botones de imagen."""
+    def __init__(self, correo, font_text, font_buttons, hacker_rect_provider=None):
+        self.correo = correo
+        self.font_text = font_text
+        self.font_buttons = font_buttons
+        self._hacker_rect_provider = hacker_rect_provider
+        self.rect = pygame.Rect(150, 100, 500, 350)
+        # Tamaño del logo mostrado dentro del correo (no afecta iconos del inbox)
+        # Volver al slot original para mantener el layout.
+        self.panel_logo_size = (64, 64)
+
+        # --- (CORREGIDO) Solo el contenido va en el cuerpo ---
+        self.texto_completo = self.correo.contenido
+        self.texto_actual = self.texto_completo # Desactivar typewriter para el scroll
+        self.tiempo_escritura = 0
+        self.velocidad_escritura = 30 
+
+        # botones
+        self.btn_back = ImageButton((0, 0), (80, 30), label_text="Volver", font=font_text)
+        self.btn_responder = ImageButton((0, 0), (160, 44),
+            image_paths=["assets/btn_responder.png", "assets/btn_reply.png"], label_text="Responder", font=font_buttons)
+        self.btn_eliminar = ImageButton((0, 0), (160, 44),
+            image_paths=["assets/btn_eliminar.png", "assets/btn_delete.png"], label_text="Eliminar", font=font_buttons)
+        self.btn_reportar = ImageButton((0, 0), (160, 44),
+            image_paths=["assets/btn_reportar.png", "assets/btn_report.png"], label_text="Reportar", font=font_buttons)
+
+        # flujo de razones
+        self.mode = "reading"
+        self.razones_sel = []
+        self.btn_razones = [
+            {"rect": pygame.Rect(0, 0, 120, 30), "razon": "Logo", "texto": "Logo"},
+            {"rect": pygame.Rect(0, 0, 120, 30), "razon": "Dominio", "texto": "Dominio"},
+            {"rect": pygame.Rect(0, 0, 120, 30), "razon": "Texto", "texto": "Texto"},
+        ]
+        self.btn_confirmar = pygame.Rect(0, 0, 120, 38)
+        self._accion_pendiente = None
+
+        # --- (NUEVO) Estado de la barra de Scroll (en español) ---
+        self._area_texto_rect = pygame.Rect(0, 0, 0, 0)
+        self.desplazamiento_y = 0
+        self.alto_linea = self.font_text.get_height() + 5
+        self.lineas_envueltas_completas = []
+        self.alto_total_texto = 0
+        self.alto_visible_texto = 0
+        self.max_desplazamiento_y = 0
+        self.scrollbar_fondo_rect = None
+        self.scrollbar_manija_rect = None
+        self.necesita_scrollbar = False
+        self.esta_arrastrando = False
+        self.arrastre_inicio_y = 0
+        self.arrastre_inicio_manija_y = 0
+
+        self._calcular_layout() # Calcular layout y scroll
+
+    def _calcular_layout(self):
+        """Calcula el área de texto y la configuración de la barra de scroll."""
+        header_h = 24
+        show_logo = self.correo.has_panel_logo()
+        logo = self.correo.load_logo(max_size=self.panel_logo_size) if show_logo else None
+        used_logo_h = logo.get_height() if logo else (self.panel_logo_size[1] if show_logo else 0)
+        add_after_header = (used_logo_h + 14) if show_logo else 0
+        top_y = self.rect.y + 8 + header_h + 10 + add_after_header
+        
+        # Área de texto es más angosta para dar espacio al scrollbar
+        text_w = self.rect.w - 20 - 18 # 18px para scrollbar + padding
+        text_h = self.rect.bottom - 10 - top_y
+        self._area_texto_rect = pygame.Rect(self.rect.x + 10, top_y, text_w, text_h)
+
+        # Calcular scroll
+        self.alto_visible_texto = self._area_texto_rect.h
+        self.lineas_envueltas_completas = wrap_ellipsis(self.texto_completo, self.font_text, text_w, max_h=None) # Usar la función modificada
+        self.alto_total_texto = max(len(self.lineas_envueltas_completas) * self.alto_linea, self.alto_visible_texto)
+        self.necesita_scrollbar = self.alto_total_texto > self.alto_visible_texto
+
+        if self.necesita_scrollbar:
+            self.max_desplazamiento_y = self.alto_total_texto - self.alto_visible_texto
+            self.scrollbar_fondo_rect = pygame.Rect(self._area_texto_rect.right + 4, self._area_texto_rect.y, 15, self._area_texto_rect.h)
+            
+            handle_h = max(20, self.alto_visible_texto * (self.alto_visible_texto / self.alto_total_texto))
+            self.scrollbar_manija_rect = pygame.Rect(self.scrollbar_fondo_rect.x, self.scrollbar_fondo_rect.y, 15, handle_h)
+            self._actualizar_pos_manija() # Sincronizar posición
+
+    def _actualizar_pos_manija(self):
+        """Actualiza la posición Y de la manija del scrollbar basado en self.desplazamiento_y"""
+        if not self.necesita_scrollbar:
+            return
+        porcentaje_scroll = 0
+        if self.max_desplazamiento_y > 0:
+            porcentaje_scroll = self.desplazamiento_y / self.max_desplazamiento_y
+        
+        rango_y_manija = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
+        self.scrollbar_manija_rect.y = self.scrollbar_fondo_rect.y + (porcentaje_scroll * rango_y_manija)
+
+    def update(self, dt):
+        # Lógica de arrastre del scroll
+        if self.esta_arrastrando:
+            mx, my = pygame.mouse.get_pos()
+            
+            # Movimiento relativo del mouse
+            dy = my - self.arrastre_inicio_y
+            
+            # Rango de movimiento de la manija
+            rango_y_manija = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
+            bg_y = self.scrollbar_fondo_rect.y
+
+            # Nueva posición de la manija
+            nueva_y_manija = self.arrastre_inicio_manija_y + dy
+            # Limitar a los bordes del scrollbar_fondo
+            nueva_y_manija = max(bg_y, min(nueva_y_manija, bg_y + rango_y_manija))
+            
+            # Calcular el porcentaje de scroll basado en la posición de la manija
+            porcentaje_scroll = 0
+            if rango_y_manija > 0:
+                porcentaje_scroll = (nueva_y_manija - bg_y) / rango_y_manija
+            
+            # Actualizar el desplazamiento_y (pixel offset del texto)
+            self.desplazamiento_y = porcentaje_scroll * self.max_desplazamiento_y
+            
+            self._actualizar_pos_manija() # Sincronizar la manija visualmente
+
+    def handle_event(self, event):
+        # --- (NUEVO) Manejo de Rueda del Mouse ---
+        if event.type == pygame.MOUSEWHEEL and self.necesita_scrollbar:
+             # Solo scrollear si el mouse está sobre el panel de texto
+            if self._area_texto_rect.collidepoint(pygame.mouse.get_pos()):
+                self.desplazamiento_y -= event.y * 30 # event.y es 1 o -1. 30 es velocidad
+                self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+                self._actualizar_pos_manija()
+                return None # Consumir el evento
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # --- (NUEVO) Manejo de Clic en Scrollbar ---
+            if self.necesita_scrollbar:
+                if self.scrollbar_manija_rect.collidepoint(event.pos):
+                    self.esta_arrastrando = True
+                    self.arrastre_inicio_y = event.pos[1]
+                    self.arrastre_inicio_manija_y = self.scrollbar_manija_rect.y
+                    return None # Consumir evento
+                elif self.scrollbar_fondo_rect.collidepoint(event.pos):
+                    # Clic en la barra (no en la manija) - Paginación
+                    if event.pos[1] < self.scrollbar_manija_rect.y:
+                        self.desplazamiento_y -= self.alto_visible_texto # Page Up
+                    else:
+                        self.desplazamiento_y += self.alto_visible_texto # Page Down
+                    self.desplazamiento_y = max(0, min(self.desplazamiento_y, self.max_desplazamiento_y))
+                    self._actualizar_pos_manija()
+                    return None # Consumir evento
+
+            # (Existente) Manejo de botones de acción
+            if self.btn_back.handle_event(event):
+                return {"type": "back"}
+            if self.mode == "reading":
+                if self.btn_responder.handle_event(event):
+                    return {"type": "accion", "accion": "responder"}
+                if self.btn_eliminar.handle_event(event):
+                    self.mode = "reasons"; self._accion_pendiente = "eliminar"; return None
+                if self.btn_reportar.handle_event(event):
+                    self.mode = "reasons"; self._accion_pendiente = "reportar"; return None
+            else:
+                for b in self.btn_razones:
+                    if b["rect"].collidepoint(event.pos):
+                        r = b["razon"]
+                        if r in self.razones_sel:
+                            self.razones_sel.remove(r)
+                        else:
+                            self.razones_sel.append(r)
+                if self.btn_confirmar.collidepoint(event.pos):
+                    acc = self._accion_pendiente
+                    self.mode = "reading"
+                    return {"type": "reasons_confirm", "accion": acc, "razones": list(self.razones_sel)}
+
+        # --- (NUEVO) Manejo de Soltar Clic ---
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.esta_arrastrando = False
+
+        return None
+
+    def render(self, surf):
+        # panel
+        pygame.draw.rect(surf, (30, 30, 50), self.rect, border_radius=10)
+        pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=10)
+        
+        # --- (CORREGIDO) Header ahora muestra el ASUNTO ---
+        header_rect = pygame.Rect(self.rect.x + 8, self.rect.y + 8, self.rect.w - 16, 24)
+        pygame.draw.rect(surf, (22, 22, 34), header_rect, border_radius=8)
+        
+        subj_str = truncate_ellipsis(self.correo.asunto, self.font_text, header_rect.w - 12)
+        subj_surf = self.font_text.render(subj_str, True, (220, 220, 220))
+        
+        # Centrar el asunto
+        subj_x = header_rect.centerx - subj_surf.get_width() // 2
+        subj_y = header_rect.centery - subj_surf.get_height() // 2
+        surf.blit(subj_surf, (subj_x, subj_y))
+        # --- FIN CORRECCIÓN HEADER ---
+
+        # logo centrado arriba
+        show_logo = self.correo.has_panel_logo()
+        logo = self.correo.load_logo(max_size=self.panel_logo_size) if show_logo else None
+        logo_y = header_rect.bottom + 10
+        if logo:
+            logo_x = self.rect.centerx - logo.get_width() // 2
+            surf.blit(logo, (logo_x, logo_y))
+            logo_rect = pygame.Rect(logo_x, logo_y, logo.get_width(), logo.get_height())
+        elif show_logo:
+            # Placeholder si no hay logo, del mismo tamaño objetivo
+            ph_w, ph_h = self.panel_logo_size
+            logo_rect = pygame.Rect(self.rect.centerx - ph_w // 2, logo_y, ph_w, ph_h)
+            pygame.draw.rect(surf, (60, 70, 90), logo_rect)
+            pygame.draw.rect(surf, (220, 220, 235), logo_rect, 2)
+        else:
+            # No reservar espacio ni dibujar placeholder si no hay logo configurado
+            logo_rect = pygame.Rect(self.rect.centerx, logo_y, 0, 0)
+
+        # --- (CORREGIDO) Renderizado de Texto con Scroll y Clipping ---
+        text_x = self._area_texto_rect.x
+        text_y_start = self._area_texto_rect.y
+        text_h = self._area_texto_rect.h
+
+        if text_h > 0:
+            # Establecer clip para asegurar que no se dibuje fuera
+            prev_clip = surf.get_clip()
+            clip_rect = self._area_texto_rect.copy() # Usar el rect del área de texto
+            surf.set_clip(clip_rect)
+            
+            y_pos = text_y_start - self.desplazamiento_y # Aplicar offset de scroll
+            
+            for line in self.lineas_envueltas_completas:
+                # Optimización: no dibujar líneas que están completamente fuera de la vista
+                if y_pos + self.alto_linea < text_y_start:
+                    y_pos += self.alto_linea
+                    continue
+                if y_pos > text_y_start + text_h:
+                    break
+
+                t = self.font_text.render(line, True, (255, 255, 255))
+                surf.blit(t, (text_x, y_pos))
+                y_pos += self.alto_linea
+                
+            surf.set_clip(prev_clip) # Restaurar clip
+        
+        # --- (NUEVO) Renderizar Scrollbar ---
+        if self.necesita_scrollbar:
+            # Fondo de la barra
+            pygame.draw.rect(surf, (40, 40, 60), self.scrollbar_fondo_rect, border_radius=7)
+            # Manija (handle)
+            color_manija = (180, 180, 200) if self.esta_arrastrando else (120, 120, 150)
+            pygame.draw.rect(surf, color_manija, self.scrollbar_manija_rect, border_radius=7)
+        # --- FIN RENDER SCROLLBAR ---
+        # layout botones: colocar 'Volver' pegado al borde izquierdo del panel, a la altura del logo
+        btn_w, btn_h = 80, 30
+        left_pad = 10
+        bx = self.rect.x + left_pad
+        by = max(header_rect.bottom + 4, logo_rect.y)
+        self.btn_back.rect.update(bx, by, btn_w, btn_h)
+        self.btn_back.draw(surf)
+
+        base_y = self.rect.bottom + 12
+        self.btn_responder.rect.update(self.rect.x, base_y, 160, 44)
+        self.btn_eliminar.rect.update(self.rect.x + 170, base_y, 160, 44)
+        self.btn_reportar.rect.update(self.rect.x + 340, base_y, 160, 44)
+        self.btn_responder.draw(surf)
+        self.btn_eliminar.draw(surf)
+        self.btn_reportar.draw(surf)
+
+        # overlay de razones
+        if self.mode == "reasons":
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 120))
+            surf.blit(overlay, (0, 0))
+            bx = self.rect.x; by = self.rect.bottom + 60
+            for i, b in enumerate(self.btn_razones):
+                b["rect"].update(bx + i * 140, by, 120, 30)
+                color = (100, 200, 100) if b["razon"] in self.razones_sel else (100, 100, 100)
+                pygame.draw.rect(surf, color, b["rect"], border_radius=5)
+                s = self.font_text.render(b["texto"], True, (0, 0, 0))
+                surf.blit(s, (b["rect"].centerx - s.get_width() // 2, b["rect"].centery - s.get_height() // 2))
+            self.btn_confirmar.update(self.rect.x + 2*140, by + 40, 120, 38)
+            pygame.draw.rect(surf, (100, 200, 100), self.btn_confirmar, border_radius=5)
+            s = self.font_buttons.render("Confirmar", True, (0, 0, 0))
+            surf.blit(s, (self.btn_confirmar.centerx - s.get_width() // 2, self.btn_confirmar.centery - s.get_height() // 2))
+
+
+# =============================================================================
+# CLASE ARCHIVOSISTEMA PARA GESTIÓN COMPLETA DE ARCHIVOS
+# =============================================================================
+class ArchivoSistema:
+    """Clase que representa un archivo del sistema con todos sus metadatos y estado"""
+
+    def __init__(self, nombre, extension, tamaño, fecha_mod, permisos, es_infectado=False,
+                 tipo_virus=None, probabilidad_infeccion=0, sintoma_asociado=None, image_path=None):
+        self.nombre = nombre
+        self.extension = extension
+        self.extension_real = self._detectar_extension_real(nombre, extension)
+        self.tamaño = tamaño
+        self.fecha_mod = fecha_mod
+        self.permisos = permisos
+        self.es_infectado = es_infectado
+        self.tipo_virus = tipo_virus
+        self.probabilidad_infeccion = probabilidad_infeccion
+        self.sintoma_asociado = sintoma_asociado
+        self.image_path = image_path
+        self.en_cuarentena = False
+        self.eliminado = False
+        self.rect = None  # Se asignará cuando se coloque en una habitación
+
+    def _detectar_extension_real(self, nombre, extension_visible):
+        """Detecta extensiones dobles o engañosas"""
+        if '.' in nombre:
+            partes = nombre.split('.')
+            if len(partes) > 2:
+                return f".{partes[-1]}"
+            elif len(partes) == 2:
+                return f".{partes[1]}"
+        return extension_visible
+
+    def obtener_metadatos(self):
+        """Retorna metadatos formateados para mostrar en UI"""
+        return {
+            "Nombre": self.nombre,
+            "Extensión": self.extension,
+            "Extensión Real": self.extension_real,
+            "Tamaño": self.tamaño,
+            "Fecha Modificación": self.fecha_mod,
+            "Permisos": self.permisos,
+            "Estado": "INFECTADO" if self.es_infectado else "LIMPIO",
+            "Tipo Virus": self.tipo_virus if self.es_infectado else "Ninguno",
+            "Probabilidad": f"{self.probabilidad_infeccion}%" if self.es_infectado else "0%"
+        }
+
+    def es_sospechoso(self):
+        """Determina si el archivo tiene características sospechosas"""
+        # Extensiones dobles
+        if self.extension != self.extension_real:
+            return True
+        # Tamaños incongruentes
+        if self.extension in [".txt", ".ini"] and "MB" in self.tamaño:
+            return True
+        if self.extension == ".exe" and "KB" not in self.tamaño:
+            return True
+        # Horas extrañas de modificación
+        if "04:30" in self.fecha_mod or "03:15" in self.fecha_mod:
+            return True
+        return False
+
+
+# =============================================================================
+# CLASE GESTOR VIRUS PARA CONTROLAR INFECCIONES Y SÍNTOMAS
+# =============================================================================
+class GestorVirus:
+    """Gestiona los virus, síntomas y su relación con archivos"""
+
+    def __init__(self):
+        self.tipos_virus = {
+            "ransomware": {"sintoma": "pantalla_bloqueada", "daño": 25},
+            "adware": {"sintoma": "popups", "daño": 15},
+            "miner": {"sintoma": "ralentizacion", "daño": 20},
+            "spyware": {"sintoma": "teclas_fantasma", "daño": 10}
+        }
+        self.sintomas_activos = {
+            "ralentizacion": False,
+            "popups": False,
+            "pantalla_bloqueada": False,
+            "teclas_fantasma": False
+        }
+        self.archivos_infectados = {}  # archivo_id -> tipo_virus
+
+    def activar_sintoma(self, tipo_virus):
+        """Activa el síntoma asociado a un tipo de virus"""
+        if tipo_virus in self.tipos_virus:
+            sintoma = self.tipos_virus[tipo_virus]["sintoma"]
+            self.sintomas_activos[sintoma] = True
+
+    def desactivar_sintoma(self, tipo_virus):
+        """Desactiva el síntoma asociado a un tipo de virus"""
+        if tipo_virus in self.tipos_virus:
+            sintoma = self.tipos_virus[tipo_virus]["sintoma"]
+            self.sintomas_activos[sintoma] = False
+
+    def verificar_sintoma_por_archivo(self, archivo):
+        """Verifica si un archivo está causando algún síntoma activo"""
+        if archivo.es_infectado and archivo.tipo_virus:
+            sintoma = self.tipos_virus.get(archivo.tipo_virus, {}).get("sintoma")
+            return self.sintomas_activos.get(sintoma, False)
+        return False
+
+    def hay_sintomas_activos(self):
+        """Verifica si hay algún síntoma activo"""
+        return any(self.sintomas_activos.values())
+
+
+# --------- Nivel 2: Análisis y limpieza de PC ----------
+class Level2Screen(Screen):
+    def __init__(self, game):
+        super().__init__(game)
+        self.state = "narrativa_inicial"
+
+        # Sistema de archivos y virus
+        self.gestor_virus = GestorVirus()
+        self.archivo_seleccionado = None
+        self.accion_en_progreso = None
+        self.tiempo_accion = 0
+        self.duracion_escaneo = 3000
+
+        # Sistema de recursos
+        self.recursos = 100
+        self.costos_acciones = {
+            "inspeccionar": 0,
+            "escanear_archivo": 10,
+            "escanear_carpeta": 15,
+            "cuarentena": 8,
+            "limpiar_malware": 0,
+            "limpiar_seguro": 12
+        }
+
+        # Estructura de directorios completa
+        self.directory_structure = {
+            "C:/": ["Users", "Program Files", "Windows", "Temp"],
+            "C:/Users": ["Admin", "Public"],
+            "C:/Users/Admin": ["Documents", "Downloads", "AppData"],
+            "C:/Users/Admin/Documents": [],
+            "C:/Users/Admin/Downloads": [],
+            "C:/Users/Admin/AppData": ["Local", "Roaming"],
+            "C:/Users/Admin/AppData/Local": ["Temp"],
+            "C:/Program Files": ["Common Files", "Internet Explorer"],
+            "C:/Windows": ["System32", "SysWOW64", "Temp"],
+            "C:/Windows/System32": [],
+            "C:/Temp": []
+        }
+
+        # Directorio actual y anterior
+        self.current_directory = "C:/"
+        self.previous_directory = None
+
+        self.game_time = 0
+        self.door_interaction_distance = 50
+
+        # HUD configuration
+        margin = 10
+        panel_top = 50
+        log_height = 120  # Aumentado de 80 a 120
+
+        available_width = SCREEN_W - (margin * 4)
+        left_width = int(available_width * 0.25)
+        right_width = int(available_width * 0.25)
+        center_width = available_width - left_width - right_width
+
+        panel_height = SCREEN_H - panel_top - log_height - (margin * 2)
+
+        self.hud_rects = {
+            "left_files": pygame.Rect(margin, panel_top, left_width, panel_height),
+            "center_preview": pygame.Rect(margin * 2 + left_width, panel_top, center_width, panel_height),
+            "right_tools": pygame.Rect(SCREEN_W - right_width - margin, panel_top, right_width, panel_height),
+            "bottom_log": pygame.Rect(margin, SCREEN_H - log_height, SCREEN_W - (margin * 2), log_height - margin),
+            "resource_bar": pygame.Rect(margin, 30, SCREEN_W - (margin * 2), 10)
+        }
+
+        # Colores del HUD
+        self.hud_colors = {
+            "background": (20, 25, 35),
+            "border": (40, 50, 70),
+            "highlight": (0, 255, 255),
+            "text": (220, 220, 220),
+            "resource": (0, 255, 0),
+            "door": (0, 150, 200),
+            "door_highlight": (255, 255, 0)
+        }
+
+        # Imágenes para puertas (1:1). Si no existen, se usa fallback (rectángulo).
+        self.door_image_path = os.path.join("assets", "doors", "door.png")
+        self.back_door_image_path = os.path.join("assets", "doors", "back_door.png")
+        # Cache unificado para todas las imágenes por (ruta, tamaño)
+        self._image_cache = {}
+
+        # Imágenes para las herramientas (iconos de acciones)
+        self.tool_images = {
+            "Inspeccionar": os.path.join("assets", "tools", "inspeccionar.png"),
+            "Escanear": os.path.join("assets", "tools", "escanear.png"),
+            "Cuarentena": os.path.join("assets", "tools", "cuarentena.png"),
+            "Limpiar": os.path.join("assets", "tools", "limpiar.png")
+        }
+
+        # Panel central de referencia para puertas
+        center_panel = self.hud_rects["center_preview"]
+
+        # Definir puertas reubicadas: cuadrícula horizontal en esquina superior izquierda del panel central.
+        # Además, la puerta "Back" se sitúa centrada en la parte inferior del panel central.
+        door_width, door_height = 72, 72  # Tamaño para puertas normales (más pequeñas)
+        back_door_width, back_door_height = 96, 96  # Tamaño para puerta Back (más grande)
+        dw, dh = door_width, door_height
+        tlx = center_panel.left + 20  # margen interno izquierdo
+        # MOVER CUADRÍCULA UN POCO MÁS ABAJO PARA NO CHOCAR CON TEXTO DEL SISTEMA
+        tly = center_panel.top + 50   # margen interno superior ajustado (+30)
+        gap = 8
+        usable_w = center_panel.w - 40  # márgenes internos totales (20 izquierda, 20 derecha)
+        cols = max(1, usable_w // (dw + gap))
+
+        def rect_at(index):
+            row = index // cols
+            col = index % cols
+            x = tlx + col * (dw + gap)
+            y = tly + row * (dh + gap)
+            return pygame.Rect(x, y, dw, dh)
+
+        def back_rect():
+            # Posicionar en esquina inferior izquierda del panel con tamaño más grande
+            bx = center_panel.left + 20
+            by = center_panel.bottom - back_door_height - 20
+            return pygame.Rect(bx, by, back_door_width, back_door_height)
+
+        self.doors = {
+            "C:/": {
+                "Users": (rect_at(0), "C:/Users"),
+                "Program Files": (rect_at(1), "C:/Program Files"),
+                "Windows": (rect_at(2), "C:/Windows"),
+                "Temp": (rect_at(3), "C:/Temp")
+            },
+            "C:/Users": {
+                "Admin": (rect_at(0), "C:/Users/Admin"),
+                "Public": (rect_at(1), "C:/Users/Public"),
+                "Back": (back_rect(), "C:/")
+            },
+            "C:/Users/Admin": {
+                "Documents": (rect_at(0), "C:/Users/Admin/Documents"),
+                "Downloads": (rect_at(1), "C:/Users/Admin/Downloads"),
+                "AppData": (rect_at(2), "C:/Users/Admin/AppData"),
+                "Back": (back_rect(), "C:/Users")
+            },
+            "C:/Users/Admin/Documents": {
+                "Back": (back_rect(), "C:/Users/Admin")
+            },
+            "C:/Users/Admin/Downloads": {
+                "Back": (back_rect(), "C:/Users/Admin")
+            },
+            "C:/Users/Admin/AppData": {
+                "Local": (rect_at(0), "C:/Users/Admin/AppData/Local"),
+                "Roaming": (rect_at(1), "C:/Users/Admin/AppData/Roaming"),
+                "Back": (back_rect(), "C:/Users/Admin")
+            },
+            "C:/Users/Admin/AppData/Local": {
+                "Temp": (rect_at(0), "C:/Users/Admin/AppData/Local/Temp"),
+                "Back": (back_rect(), "C:/Users/Admin/AppData")
+            },
+            "C:/Program Files": {
+                "Common Files": (rect_at(0), "C:/Program Files/Common Files"),
+                "Internet Explorer": (rect_at(1), "C:/Program Files/Internet Explorer"),
+                "Back": (back_rect(), "C:/")
+            },
+            "C:/Windows": {
+                "System32": (rect_at(0), "C:/Windows/System32"),
+                "SysWOW64": (rect_at(1), "C:/Windows/SysWOW64"),
+                "Temp": (rect_at(2), "C:/Windows/Temp"),
+                "Back": (back_rect(), "C:/")
+            },
+            "C:/Windows/System32": {
+                "Back": (back_rect(), "C:/Windows")
+            },
+            "C:/Users/Public": {
+                "Back": (back_rect(), "C:/Users")
+            },
+            "C:/Users/Admin/AppData/Roaming": {
+                "Back": (back_rect(), "C:/Users/Admin/AppData")
+            },
+            "C:/Users/Admin/AppData/Local/Temp": {
+                "Back": (back_rect(), "C:/Users/Admin/AppData/Local")
+            },
+            "C:/Program Files/Common Files": {
+                "Back": (back_rect(), "C:/Program Files")
+            },
+            "C:/Program Files/Internet Explorer": {
+                "Back": (back_rect(), "C:/Program Files")
+            },
+            "C:/Windows/SysWOW64": {
+                "Back": (back_rect(), "C:/Windows")
+            },
+            "C:/Windows/Temp": {
+                "Back": (back_rect(), "C:/Windows")
+            },
+            "C:/Temp": {
+                "Back": (back_rect(), "C:/")
+            }
+        }
+
+        # Estado del HUD
+        self.active_panel = "center_preview"
+        self.hud_elements = {
+            "left_files": [],
+            "tools": ["Inspeccionar", "Escanear", "Cuarentena", "Limpiar"]
+        }
+
+        # Fuentes
+        # Cargar fuente personalizada desde archivo texto.ttf (fallback a default si falla)
+        try:
+            custom_font_title = pygame.font.Font("texto.ttf", 24)
+            custom_font_normal = pygame.font.Font("texto.ttf", 20)
+            custom_font_small = pygame.font.Font("texto.ttf", 16)
+        except Exception:
+            custom_font_title = pygame.font.Font(None, 24)
+            custom_font_normal = pygame.font.Font(None, 20)
+            custom_font_small = pygame.font.Font(None, 16)
+
+        self.fonts = {
+            "title": custom_font_title,
+            "normal": custom_font_normal,
+            "small": custom_font_small
+        }
+
+        # Botones de herramientas
+        self.tool_button_rects = []
+        tool_rect = self.hud_rects["right_tools"].copy()
+        tool_rect.y += 35
+        tool_rect.x += 10
+        tool_rect.width -= 20
+
+        for tool in self.hud_elements["tools"]:
+            button_rect = pygame.Rect(tool_rect.x, tool_rect.y, tool_rect.width, 50)
+            self.tool_button_rects.append(button_rect)
+            tool_rect.y += 60
+
+        # Variables de estado del juego
+        self.max_mistakes = 5
+        self.mistakes_made = 0
+        self.total_viruses = 0  # Se calculará después
+        self.viruses_cleaned = 0
+        self.victory_condition = False
+        self.game_over_reason = ""
+
+        # Estado de transición
+        self.in_transition = False
+        self.transition_time = 0.0
+        self.transition_duration = 0.5
+        self.transition_target = None
+        self.transition_start_pos = pygame.math.Vector2(0, 0)
+        self.transition_end_pos = pygame.math.Vector2(0, 0)
+
+        # Interacción
+        self.near_door = None
+        self.door_highlight_time = 0.0
+        self.pressed_door = None
+        self.pressed_file = None
+
+        # Archivos
+        self.files_in_room = {}
+        self.file_interaction_distance = 40
+        self.near_file = None
+        self.file_highlight_time = 0.0
+        # Estado previo de la tecla E para disparo solo en flanco
+        self._e_prev = False
+
+        # Mensajes
+        self.current_message = "Log: Esperando acciones..."
+        self.message_duration = 3.0
+        self.effect_timers = {"message": 0.0}
+        
+        # Sistema de scroll para el log
+        self.log_lines = []
+        self.log_scroll_offset = 0
+        self.log_max_scroll = 0
+        self.log_scrollbar_dragging = False
+        self.log_drag_start_y = 0
+        self.log_drag_start_offset = 0
+
+        # =============================================================================
+        # GENERACIÓN DE ARCHIVOS CON METADATOS COMPLETOS (MÁS DE 10 ARCHIVOS)
+        # =============================================================================
+        cp_x, cp_y = self.hud_rects["center_preview"].centerx, self.hud_rects["center_preview"].centery
+        # Los archivos ahora tienen el mismo tamaño que las puertas normales
+        file_w, file_h = door_width, door_height  # 72x72, igual que puertas normales
+
+        # Generar archivos para cada directorio - MÁS DE 10 ARCHIVOS TOTAL
+        self.files_in_room = {
+            "C:/": [
+                ArchivoSistema("readme.txt", ".txt", "1 KB", "15/03/2024 10:30", "Lectura", False, 
+                               image_path=os.path.join("assets", "files", "txt.png")),
+                ArchivoSistema("config.sys", ".sys", "2 KB", "14/03/2024 14:15", "Sistema", False,
+                               image_path=os.path.join("assets", "files", "sys.png")),
+                ArchivoSistema("autoexec.bat", ".bat", "1 KB", "13/03/2024 09:20", "Ejecución", False,
+                               image_path=os.path.join("assets", "files", "bat.png"))
+            ],
+            "C:/Users/Admin/Documents": [
+                ArchivoSistema("document1.doc", ".doc", "250 KB", "16/03/2024 11:00", "Lectura/Escritura", False,
+                               image_path=os.path.join("assets", "files", "doc.png")),
+                ArchivoSistema("budget.xlsx", ".xlsx", "450 KB", "16/03/2024 10:00", "Lectura/Escritura", False,
+                               image_path=os.path.join("assets", "files", "xlsx.png")),
+                ArchivoSistema("presentation.ppt", ".ppt", "1.2 MB", "15/03/2024 16:30", "Lectura", False,
+                               image_path=os.path.join("assets", "files", "ppt.png"))
+            ],
+            "C:/Users/Admin/Downloads": [
+                ArchivoSistema("GIMP_Installer.exe", ".exe", "120 MB", "16/03/2024 09:45", "Ejecución", False,
+                               image_path=os.path.join("assets", "files", "exe.png")),
+                ArchivoSistema("Free_Game.exe", ".exe", "420 KB", "15/03/2024 04:30", "Ejecución", True, "adware", 85,
+                               "popups", image_path=os.path.join("assets", "files", "exe.png")),
+                ArchivoSistema("invoice_2025.pdf", ".pdf", "2.3 MB", "16/03/2024 11:20", "Lectura", False,
+                               image_path=os.path.join("assets", "files", "pdf.png")),
+                ArchivoSistema("crypto_miner.exe", ".exe", "320 KB", "15/03/2024 03:15", "Ejecución", True, "miner", 92,
+                               "ralentizacion", image_path=os.path.join("assets", "files", "exe.png")),
+                ArchivoSistema("movie.mp4", ".mp4", "1.5 GB", "14/03/2024 20:15", "Lectura", False,
+                               image_path=os.path.join("assets", "files", "mp4.png"))
+            ],
+            "C:/Windows/System32": [
+                ArchivoSistema("kernel32.dll", ".dll", "1.2 MB", "10/03/2024 08:00", "Sistema", False,
+                               image_path=os.path.join("assets", "files", "dll.png")),
+                ArchivoSistema("x_virus.exe", ".exe", "520 KB", "14/03/2024 04:30", "Ejecución", True, "ransomware", 95,
+                               "pantalla_bloqueada", image_path=os.path.join("assets", "files", "exe.png")),
+                ArchivoSistema("user32.dll", ".dll", "890 KB", "10/03/2024 08:00", "Sistema", False,
+                               image_path=os.path.join("assets", "files", "dll.png")),
+                ArchivoSistema("spy_tool.exe", ".exe", "280 KB", "15/03/2024 02:45", "Ejecución", True, "spyware", 78,
+                               "teclas_fantasma", image_path=os.path.join("assets", "files", "exe.png")),
+                ArchivoSistema("winlogon.exe", ".exe", "1.1 MB", "10/03/2024 08:00", "Sistema", False,
+                               image_path=os.path.join("assets", "files", "exe.png"))
+            ],
+            "C:/Temp": [
+                ArchivoSistema("temp_file.tmp", ".tmp", "15 KB", "16/03/2024 12:05", "Lectura/Escritura", False,
+                               image_path=os.path.join("assets", "files", "temp.png")),
+                ArchivoSistema("adware_bundle.exe", ".exe", "650 KB", "15/03/2024 04:30", "Ejecución", True, "adware",
+                               88, "popups", image_path=os.path.join("assets", "files", "exe.png")),
+                ArchivoSistema("logfile.log", ".log", "3 KB", "16/03/2024 12:10", "Lectura", False,
+                               image_path=os.path.join("assets", "files", "log.png"))
+            ],
+            "C:/Program Files": [
+                ArchivoSistema("program1.exe", ".exe", "5.2 MB", "13/03/2024 12:00", "Ejecución", False,
+                               image_path=os.path.join("assets", "files", "exe.png")),
+                ArchivoSistema("program2.dll", ".dll", "1.8 MB", "13/03/2024 12:00", "Sistema", False,
+                               image_path=os.path.join("assets", "files", "dll.png"))
+            ]
+        }
+
+        # Calcular el total de virus
+        for directorio, archivos in self.files_in_room.items():
+            for archivo in archivos:
+                if archivo.es_infectado:
+                    self.total_viruses += 1
+
+        # Asignar rectángulos a los archivos - POSICIONADOS EN LA MISMA CUADRÍCULA QUE LAS PUERTAS
+        # Los archivos continúan después de las puertas normales (no Back), en la misma cuadrícula
+        for directorio, archivos in self.files_in_room.items():
+            # Contar cuántas puertas normales (no Back) hay en este directorio
+            num_normal_doors = 0
+            if directorio in self.doors:
+                for door_name in self.doors[directorio].keys():
+                    if door_name != "Back":
+                        num_normal_doors += 1
+            
+            # Los archivos empiezan después de las puertas normales
+            for i, archivo in enumerate(archivos):
+                # índice global en la cuadrícula (después de las puertas normales)
+                grid_index = num_normal_doors + i
+                archivo.rect = rect_at(grid_index)
+                
+                # Activar síntomas de archivos infectados
+                if archivo.es_infectado and archivo.tipo_virus:
+                    self.gestor_virus.activar_sintoma(archivo.tipo_virus)
+
+        self.paused = False
+
+        # Actualizar panel de archivos inicial
+        self.actualizar_panel_archivos()
+
+    # --- Soporte de imagen para puertas ---
+    def _get_image_scaled(self, image_path: str, side: int) -> pygame.Surface | None:
+        """Retorna una Surface cuadrada (side x side) con la imagen 1:1 escalada (cached).
+        1) Carga imagen desde image_path si existe
+        2) Recorta zonas transparentes con get_bounding_rect() para maximizar el área del objeto.
+        3) Escala manteniendo aspecto al tamaño cuadrado (side, side).
+        4) Centra el resultado en un lienzo cuadrado transparente.
+        Retorna None si no existe la imagen o side<=0.
+        """
+        if side <= 0:
+            return None
+        
+        # Cache key por ruta y tamaño
+        cache_key = (image_path, int(side))
+        if cache_key in self._image_cache:
+            return self._image_cache[cache_key]
+        
+        # Intentar cargar imagen
+        if not os.path.isfile(image_path):
+            self._image_cache[cache_key] = None
+            return None
+        
+        try:
+            raw_img = pygame.image.load(image_path).convert_alpha()
+        except Exception:
+            self._image_cache[cache_key] = None
+            return None
+        
+        # recortar transparencias (min_alpha=1 para eliminar todo el espacio vacío)
+        try:
+            bbox = raw_img.get_bounding_rect(min_alpha=1)
+            if bbox.width > 0 and bbox.height > 0:
+                cropped = raw_img.subsurface(bbox).copy()
+            else:
+                cropped = raw_img
+        except Exception:
+            cropped = raw_img
+
+        # ajustar a cuadrado manteniendo aspecto
+        cw, ch = cropped.get_size()
+        if cw <= 0 or ch <= 0:
+            self._image_cache[cache_key] = None
+            return None
+        scale = side / max(cw, ch)
+        new_w = max(1, int(cw * scale))
+        new_h = max(1, int(ch * scale))
+        scaled = pygame.transform.smoothscale(cropped, (new_w, new_h))
+
+        # centrar en lienzo cuadrado
+        canvas = pygame.Surface((side, side), pygame.SRCALPHA)
+        canvas.fill((0, 0, 0, 0))
+        x = (side - new_w) // 2
+        y = (side - new_h) // 2
+        canvas.blit(scaled, (x, y))
+
+        self._image_cache[cache_key] = canvas
+        return canvas
+
+    def actualizar_panel_archivos(self):
+        """Actualiza la lista de archivos en el panel izquierdo según el directorio actual"""
+        self.hud_elements["left_files"] = []
+
+        # Agregar las carpetas (subdirectorios) del directorio actual
+        if self.current_directory in self.directory_structure:
+            for subdir in self.directory_structure[self.current_directory]:
+                self.hud_elements["left_files"].append({
+                    "name": subdir,
+                    "size": "--",
+                    "type": "Folder"
+                })
+
+        # Agregar los archivos del directorio actual
+        if self.current_directory in self.files_in_room:
+            for archivo in self.files_in_room[self.current_directory]:
+                if not archivo.eliminado:
+                    self.hud_elements["left_files"].append({
+                        "name": archivo.nombre,
+                        "size": archivo.tamaño,
+                        "type": "File",
+                        "object": archivo  # Referencia al objeto real
+                    })
+
+    # =============================================================================
+    # MÉTODOS PARA ACCIONES DE ANÁLISIS DE ARCHIVOS
+    # =============================================================================
+
+    def ejecutar_accion(self, accion, archivo=None):
+        """Ejecuta una acción sobre un archivo o directorio"""
+        if self.accion_en_progreso:
+            self.show_message("Ya hay una acción en progreso...")
+            return
+
+        costo = self.costos_acciones.get(accion, 0)
+        if self.recursos < costo:
+            self.show_message("¡Recursos insuficientes!")
+            return
+
+        self.accion_en_progreso = accion
+        self.tiempo_accion = 0
+        self.archivo_seleccionado = archivo
+
+        # Aplicar costo de recursos inmediatamente
+        if costo > 0:
+            self.recursos -= costo
+            self.show_message(f"Recursos: -{costo} | {self.recursos} restantes")
+
+    def actualizar_acciones(self, dt):
+        """Actualiza las acciones en progreso y sus temporizadores"""
+        if not self.accion_en_progreso:
+            return
+
+        self.tiempo_accion += dt
+
+        if self.tiempo_accion >= self.duracion_escaneo:
+            # Acción completada
+            if self.accion_en_progreso == "inspeccionar":
+                self._completar_inspeccion()
+            elif self.accion_en_progreso == "escanear_archivo":
+                self._completar_escaneo_archivo()
+            elif self.accion_en_progreso == "escanear_carpeta":
+                self._completar_escaneo_carpeta()
+            elif self.accion_en_progreso == "cuarentena":
+                self._completar_cuarentena()
+            elif self.accion_en_progreso == "limpiar":
+                self._completar_limpieza()
+
+            self.accion_en_progreso = None
+            self.archivo_seleccionado = None
+
+    def _completar_inspeccion(self):
+        """Completa la acción de inspeccionar un archivo"""
+        if self.archivo_seleccionado:
+            metadatos = self.archivo_seleccionado.obtener_metadatos()
+            mensaje = f"INSPECCIÓN: {self.archivo_seleccionado.nombre}\n"
+            for key, value in metadatos.items():
+                mensaje += f"{key}: {value}\n"
+            self.show_message(mensaje)
+
+    def _completar_escaneo_archivo(self):
+        """Completa el escaneo individual de un archivo"""
+        if self.archivo_seleccionado:
+            probabilidad = self.archivo_seleccionado.probabilidad_infeccion
+            if self.archivo_seleccionado.es_infectado:
+                mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {probabilidad}% riesgo - {self.archivo_seleccionado.tipo_virus.upper()}"
+            else:
+                # Para archivos limpios, mostrar un porcentaje bajo aleatorio
+                riesgo = random.randint(0, 15)
+                mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {riesgo}% riesgo - LIMPIO"
+            self.show_message(mensaje)
+
+    def _completar_escaneo_carpeta(self):
+        """Completa el escaneo de la carpeta actual"""
+        archivos_riesgo = []
+
+        # Escanear subcarpetas
+        if self.current_directory in self.directory_structure:
+            for subdir in self.directory_structure[self.current_directory]:
+                # Simular riesgo en carpetas
+                riesgo_carpeta = random.randint(0, 30)
+                archivos_riesgo.append((f"[CARPETA] {subdir}", riesgo_carpeta))
+
+        # Escanear archivos
+        if self.current_directory in self.files_in_room:
+            for archivo in self.files_in_room[self.current_directory]:
+                if not archivo.eliminado and not archivo.en_cuarentena:
+                    if archivo.es_infectado:
+                        riesgo = archivo.probabilidad_infeccion
+                    else:
+                        riesgo = random.randint(0, 20)
+                    archivos_riesgo.append((archivo.nombre, riesgo))
+
+        mensaje = "ESCANEO CARPETA:\n"
+        for nombre, riesgo in archivos_riesgo[:6]:  # Mostrar máximo 6 elementos
+            estado = "ALTO RIESGO" if riesgo > 50 else "BAJO RIESGO"
+            mensaje += f"{nombre}: {riesgo}% - {estado}\n"
+        self.show_message(mensaje)
+
+    def _completar_cuarentena(self):
+        """Completa la acción de poner en cuarentena un archivo"""
+        if self.archivo_seleccionado:
+            self.archivo_seleccionado.en_cuarentena = True
+
+            if self.archivo_seleccionado.es_infectado:
+                self.show_message(f"CUARENTENA: {self.archivo_seleccionado.nombre} - Virus aislado")
+                # Programar desactivación de síntoma
+                pygame.time.set_timer(pygame.USEREVENT + 1, 20000)
+            else:
+                # Penalización por archivo seguro
+                self.recursos -= 5
+                self.mistakes_made += 1
+                self.show_message(f"ERROR: {self.archivo_seleccionado.nombre} era seguro! -5 recursos")
+
+    def _completar_limpieza(self):
+        """Completa la acción de limpiar/eliminar un archivo"""
+        if self.archivo_seleccionado:
+            if self.archivo_seleccionado.es_infectado:
+                # Éxito - eliminar virus
+                self.archivo_seleccionado.eliminado = True
+                self.viruses_cleaned += 1
+
+                # Desactivar síntoma inmediatamente
+                if self.archivo_seleccionado.tipo_virus:
+                    self.gestor_virus.desactivar_sintoma(self.archivo_seleccionado.tipo_virus)
+
+                self.show_message(
+                    f"¡VIRUS ELIMINADO! {self.archivo_seleccionado.nombre} - {self.viruses_cleaned}/{self.total_viruses}")
+
+            else:
+                # Error - eliminar archivo seguro
+                self.recursos -= self.costos_acciones["limpiar_seguro"]
+                self.mistakes_made += 1
+                self.show_message(
+                    f"ERROR: Eliminaste archivo seguro! -{self.costos_acciones['limpiar_seguro']} recursos")
+
+    def manejar_evento_cuarentena(self, event):
+        """Maneja el evento de temporizador para desactivar síntomas"""
+        if event.type == pygame.USEREVENT + 1:
+            for directorio, archivos in self.files_in_room.items():
+                for archivo in archivos:
+                    if (archivo.en_cuarentena and archivo.es_infectado and
+                            self.gestor_virus.verificar_sintoma_por_archivo(archivo)):
+                        self.gestor_virus.desactivar_sintoma(archivo.tipo_virus)
+                        self.show_message(f"Síntoma desactivado: {archivo.tipo_virus}")
+                        break
+            pygame.time.set_timer(pygame.USEREVENT + 1, 0)
+
+    def dibujar_sintomas_globales(self, surf):
+        """Dibuja los síntomas activos en la parte superior de la pantalla"""
+        if not self.gestor_virus.hay_sintomas_activos():
+            return
+
+        sintomas_texto = "SÍNTOMAS: "
+        if self.gestor_virus.sintomas_activos["ralentizacion"]:
+            sintomas_texto += "LENTITUD "
+        if self.gestor_virus.sintomas_activos["popups"]:
+            sintomas_texto += "POPUPS "
+        if self.gestor_virus.sintomas_activos["pantalla_bloqueada"]:
+            sintomas_texto += "BLOQUEO "
+        if self.gestor_virus.sintomas_activos["teclas_fantasma"]:
+            sintomas_texto += "TECLAS "
+
+        sintoma_surf = self.fonts["normal"].render(sintomas_texto, True, (255, 50, 50))
+        surf.blit(sintoma_surf, (SCREEN_W // 2 - sintoma_surf.get_width() // 2, 5))
+
+    def dibujar_progreso_accion(self, surf):
+        """Dibuja la barra de progreso de la acción en curso"""
+        if not self.accion_en_progreso:
+            return
+
+        progreso = min(1.0, self.tiempo_accion / self.duracion_escaneo)
+        bar_width = 200
+        bar_height = 20
+        bar_x = SCREEN_W // 2 - bar_width // 2
+        bar_y = SCREEN_H - 120
+
+        # Fondo de la barra
+        pygame.draw.rect(surf, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height))
+        # Barra de progreso
+        pygame.draw.rect(surf, (0, 200, 255), (bar_x, bar_y, bar_width * progreso, bar_height))
+        # Texto
+        accion_text = self.fonts["small"].render(f"{self.accion_en_progreso.upper()}...", True, (255, 255, 255))
+        surf.blit(accion_text, (bar_x, bar_y - 25))
+
+    def handle_event(self, event):
+        if event.type == pygame.USEREVENT + 1:
+            self.manejar_evento_cuarentena(event)
+        
+        # Manejo de scroll del log con rueda del mouse
+        if event.type == pygame.MOUSEWHEEL:
+            log_rect = self.hud_rects["bottom_log"]
+            if log_rect.collidepoint(pygame.mouse.get_pos()):
+                self.log_scroll_offset = max(0, min(self.log_max_scroll, self.log_scroll_offset - event.y))
+        
+        # Drag del scrollbar del log
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            log_rect = self.hud_rects["bottom_log"]
+            scrollbar_x = log_rect.right - 20
+            scrollbar_area = pygame.Rect(scrollbar_x, log_rect.y + 10, 10, log_rect.h - 20)
+            if scrollbar_area.collidepoint(event.pos):
+                self.log_scrollbar_dragging = True
+                self.log_drag_start_y = event.pos[1]
+                self.log_drag_start_offset = self.log_scroll_offset
+        
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.log_scrollbar_dragging = False
+            
+            # Navegación por puertas al soltar el clic
+            if self.pressed_door and not self.in_transition:
+                if self.current_directory in self.doors:
+                    for door_name, (door_rect, target_dir) in self.doors[self.current_directory].items():
+                        if door_rect == self.pressed_door:
+                            mx, my = pygame.mouse.get_pos()
+                            # Solo abrir si el mouse sigue sobre la puerta
+                            if door_rect.collidepoint(mx, my):
+                                self.start_transition(target_dir, door_rect)
+                            break
+            
+            self.pressed_door = None
+            self.pressed_file = None
+        
+        if event.type == pygame.MOUSEMOTION and self.log_scrollbar_dragging:
+            log_rect = self.hud_rects["bottom_log"]
+            scrollbar_h = log_rect.h - 20
+            line_height = self.fonts["small"].get_height() + 2
+            visible_lines = (log_rect.h - 20) // line_height
+            total_lines = len(self.log_lines)
+            
+            if total_lines > visible_lines:
+                delta_y = event.pos[1] - self.log_drag_start_y
+                handle_h = max(20, int(scrollbar_h * (visible_lines / total_lines)))
+                scroll_range = scrollbar_h - handle_h
+                if scroll_range > 0:
+                    scroll_delta = int((delta_y / scroll_range) * self.log_max_scroll)
+                    self.log_scroll_offset = max(0, min(self.log_max_scroll, self.log_drag_start_offset + scroll_delta))
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.paused = not self.paused
+            elif self.state == "narrativa_inicial" and event.key == pygame.K_RETURN:
+                self.state = "jugando"
+            elif self.state == "fin_juego" and event.key == pygame.K_r:
+                self.__init__(self.game)
+            # Interacciones de juego ahora son solo con mouse
+
+        # CLICK IZQUIERDO
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.state == "jugando" and not self.accion_en_progreso:
+
+                # --------------------------- HERRAMIENTAS ---------------------------
+                for i, button_rect in enumerate(self.tool_button_rects):
+                    if button_rect.collidepoint(event.pos):
+                        tool_name = self.hud_elements["tools"][i]
+
+                        if tool_name == "Inspeccionar":
+                            if self.archivo_seleccionado:
+                                self.ejecutar_accion("inspeccionar", self.archivo_seleccionado)
+                            else:
+                                self.show_message("Selecciona un archivo primero")
+
+                        elif tool_name == "Escanear":
+                            if self.archivo_seleccionado:
+                                self.ejecutar_accion("escanear_archivo", self.archivo_seleccionado)
+                            else:
+                                self.ejecutar_accion("escanear_carpeta")
+
+                        elif tool_name == "Cuarentena":
+                            if self.archivo_seleccionado:
+                                self.ejecutar_accion("cuarentena", self.archivo_seleccionado)
+                            else:
+                                self.show_message("Selecciona un archivo primero")
+
+                        elif tool_name == "Limpiar":
+                            if self.archivo_seleccionado:
+                                self.ejecutar_accion("limpiar", self.archivo_seleccionado)
+                            else:
+                                self.show_message("Selecciona un archivo primero")
+
+                        return  # dejar de procesar más clics
+
+                # ------------------------ SELECCIÓN DE ARCHIVOS ------------------------
+                file_rect = self.hud_rects["left_files"].copy()
+                file_rect.y += 35
+                file_rect.x += 10
+                file_rect.width -= 20
+
+                for file_info in self.hud_elements["left_files"]:
+                    item_rect = pygame.Rect(file_rect.x, file_rect.y, file_rect.width, 25)
+
+                    if item_rect.collidepoint(event.pos) and file_info["type"] == "File":
+                        # Al hacer clic, guardar el archivo seleccionado real
+                        self.archivo_seleccionado = file_info["object"]
+                        self.show_message(f"Archivo seleccionado: {self.archivo_seleccionado.nombre}")
+                        return
+
+                    file_rect.y += 30
+
+                # --------------------------- PUERTAS (click en panel central) ---------------------------
+                if self.current_directory in self.doors and not self.in_transition:
+                    for door_name, (door_rect, target_dir) in self.doors[self.current_directory].items():
+                        if door_rect.collidepoint(event.pos):
+                            self.pressed_door = door_rect
+                            # No navegar aún, esperar al mouseup
+                            return
+
+                # --------------------------- ARCHIVOS EN PANEL CENTRAL ---------------------------
+                if self.current_directory in self.files_in_room:
+                    for archivo in self.files_in_room[self.current_directory]:
+                        if archivo.eliminado:
+                            continue
+                        if archivo.rect.collidepoint(event.pos):
+                            self.pressed_file = archivo
+                            self.archivo_seleccionado = archivo
+                            self.show_message(f"Archivo seleccionado: {archivo.nombre}")
+                            return
+
+    def update(self, dt):
+        if self.paused or self.state != "jugando":
+            return
+
+        self.actualizar_acciones(dt)
+        self.game_time += dt
+
+        # BLOQUEAR TODO SI ESTÁ EN TRANSICIÓN
+        if self.in_transition:
+            self.transition_time += dt
+            progress = min(1.0, self.transition_time / self.transition_duration)
+
+            if progress >= 1.0:
+                self.in_transition = False
+                self.current_directory = self.transition_target
+                self.actualizar_panel_archivos()
+                print(f"DEBUG: Llegué a {self.current_directory}")  # Para debug
+            return
+        # MODO MOUSE-ONLY: actualizar resaltados por hover
+        self.near_door = None
+        self.near_file = None
+
+        mouse_pos = pygame.mouse.get_pos()
+
+        # Puertas bajo el mouse
+        if self.current_directory in self.doors:
+            for door_name, (door_rect, target_dir) in self.doors[self.current_directory].items():
+                if door_rect.collidepoint(mouse_pos):
+                    self.near_door = (door_name, door_rect, target_dir)
+                    break
+
+        # Archivos bajo el mouse
+        if self.current_directory in self.files_in_room:
+            for archivo in self.files_in_room[self.current_directory]:
+                if archivo.eliminado:
+                    continue
+                if archivo.rect.collidepoint(mouse_pos):
+                    self.near_file = archivo
+                    break
+
+        self.check_game_state()
+
+    def start_transition(self, target_directory, door_rect):
+        """Inicia una transición a un nuevo directorio (interacción solo con mouse)."""
+        if self.in_transition:
+            return
+        self.in_transition = True
+        self.transition_time = 0
+        self.transition_target = target_directory
+        self.previous_directory = self.current_directory
+        self.show_message(f"Cambiando a {target_directory}...")
+
+    def check_game_state(self):
+        if self.viruses_cleaned >= self.total_viruses:
+            self.victory_condition = True
+            self.game_over_reason = "¡Has limpiado todos los virus!"
+            self.state = "fin_juego"
+        elif self.recursos <= 0:
+            self.victory_condition = False
+            self.game_over_reason = "¡Te has quedado sin recursos!"
+            self.state = "fin_juego"
+        elif self.mistakes_made >= self.max_mistakes:
+            self.victory_condition = False
+            self.game_over_reason = "¡Has cometido demasiados errores!"
+            self.state = "fin_juego"
+
+    def show_message(self, message, duration=None):
+        self.current_message = message
+        self.effect_timers["message"] = duration or self.message_duration
+
+    def draw_panel_title(self, surf, rect, title):
+        text = self.fonts["title"].render(title, True, self.hud_colors["text"])
+        text_rect = text.get_rect(midtop=(rect.centerx, rect.top + 5))
+        surf.blit(text, text_rect)
+
+    def render(self, surf):
+        surf.fill((0, 0, 0))
+
+        if self.gestor_virus.sintomas_activos["ralentizacion"]:
+            if pygame.time.get_ticks() % 1000 < 500:
+                surf.fill((30, 30, 60), special_flags=pygame.BLEND_RGB_ADD)
+
+        if self.state == "narrativa_inicial":
+            # Narrativa inicial (placeholder)
+            pass
+        elif self.state == "jugando":
+            # Dibujar paneles
+            for name, rect in self.hud_rects.items():
+                if name == "resource_bar": continue
+                pygame.draw.rect(surf, self.hud_colors["background"], rect)
+                border_color = self.hud_colors["highlight"] if name == self.active_panel else self.hud_colors["border"]
+                pygame.draw.rect(surf, border_color, rect, 3 if name == self.active_panel else 2, border_radius=5)
+
+            # Barra de recursos
+            resource_rect = self.hud_rects["resource_bar"]
+            pygame.draw.rect(surf, (10, 10, 10), resource_rect)
+            resource_width = (self.recursos / 100) * (resource_rect.width - 4)
+            current_resource_rect = pygame.Rect(resource_rect.x + 2, resource_rect.y + 2, resource_width,
+                                                resource_rect.height - 4)
+            pygame.draw.rect(surf, self.hud_colors["resource"], current_resource_rect)
+            pygame.draw.rect(surf, self.hud_colors["border"], resource_rect, 1)
+
+            # Síntomas globales
+            self.dibujar_sintomas_globales(surf)
+
+            # Títulos
+            self.draw_panel_title(surf, self.hud_rects["left_files"], "Archivos")
+            self.draw_panel_title(surf, self.hud_rects["center_preview"], "Sistema")
+            self.draw_panel_title(surf, self.hud_rects["right_tools"], "Herramientas")
+
+            # Panel izquierdo - ARCHIVOS DEL DIRECTORIO ACTUAL
+            file_rect = self.hud_rects["left_files"].copy()
+            file_rect.y += 35
+            file_rect.x += 10
+            file_rect.width -= 20
+
+            for file_info in self.hud_elements["left_files"]:
+                # Icono (azul para carpetas, gris para archivos)
+                icon_rect = pygame.Rect(file_rect.x, file_rect.y + 2, 16, 16)
+                if file_info["type"] == "Folder":
+                    pygame.draw.rect(surf, (100, 100, 255), icon_rect)
+                else:
+                    pygame.draw.rect(surf, self.hud_colors["border"], icon_rect)
+
+                # Nombre
+                text = self.fonts["normal"].render(file_info["name"], True, self.hud_colors["text"])
+                surf.blit(text, (file_rect.x + 22, file_rect.y))
+                file_rect.y += 25
+                if file_rect.y > self.hud_rects["left_files"].bottom - 20:
+                    break
+
+            # Herramientas
+            for i, tool_name in enumerate(self.hud_elements["tools"]):
+                button_rect = self.tool_button_rects[i]
+                # Borde fijo
+                pygame.draw.rect(surf, self.hud_colors["border"], button_rect, border_radius=5)
+                
+                # Hover blanco
+                if button_rect.collidepoint(pygame.mouse.get_pos()):
+                    pygame.draw.rect(surf, (255, 255, 255), button_rect, 2, border_radius=5)
+
+                # Dibujar icono de herramienta (imagen personalizada o fallback) - más grande
+                icon_size = 32
+                icon_rect = pygame.Rect(button_rect.x + 8, button_rect.y + (button_rect.height - icon_size) // 2, icon_size, icon_size)
+                tool_img_path = self.tool_images.get(tool_name)
+                tool_img = None
+                
+                if tool_img_path:
+                    tool_img = self._get_image_scaled(tool_img_path, icon_size)
+                
+                if tool_img is not None:
+                    # Dibujar imagen centrada en el área del icono
+                    img_rect = tool_img.get_rect(center=icon_rect.center)
+                    surf.blit(tool_img, img_rect)
+                else:
+                    # Fallback: rectángulo cyan si no hay imagen
+                    pygame.draw.rect(surf, self.hud_colors["highlight"], icon_rect)
+
+                # Texto más grande usando fuente title
+                text = self.fonts["title"].render(tool_name, True, self.hud_colors["text"])
+                text_y = button_rect.y + (button_rect.height - text.get_height()) // 2
+                surf.blit(text, (button_rect.x + 48, text_y))
+
+            # Log - Soporta saltos de línea con scroll bar
+            log_rect = self.hud_rects["bottom_log"]
+            # Dividir el mensaje en líneas respetando \n y añadir ">" al inicio
+            self.log_lines = [f"> {line}" for line in self.current_message.split('\n')]
+            
+            line_height = self.fonts["small"].get_height() + 2
+            visible_area = pygame.Rect(log_rect.x + 10, log_rect.y + 10, log_rect.w - 40, log_rect.h - 20)
+            max_visible_lines = visible_area.h // line_height
+            total_lines = len(self.log_lines)
+            
+            # Calcular scroll
+            needs_scrollbar = total_lines > max_visible_lines
+            self.log_max_scroll = max(0, total_lines - max_visible_lines)
+            self.log_scroll_offset = max(0, min(self.log_scroll_offset, self.log_max_scroll))
+            
+            # Renderizar líneas con clipping
+            prev_clip = surf.get_clip()
+            surf.set_clip(visible_area)
+            
+            y_offset = visible_area.y
+            for i in range(self.log_scroll_offset, min(self.log_scroll_offset + max_visible_lines + 2, total_lines)):
+                if y_offset < visible_area.bottom:
+                    text = self.fonts["small"].render(self.log_lines[i], True, self.hud_colors["text"])
+                    surf.blit(text, (visible_area.x, y_offset))
+                    y_offset += line_height
+            
+            surf.set_clip(prev_clip)
+            
+            # Scrollbar
+            if needs_scrollbar:
+                scrollbar_x = log_rect.right - 20
+                scrollbar_y = log_rect.y + 10
+                scrollbar_h = log_rect.h - 20
+                scrollbar_w = 10
+                
+                # Fondo del scrollbar
+                scrollbar_bg = pygame.Rect(scrollbar_x, scrollbar_y, scrollbar_w, scrollbar_h)
+                pygame.draw.rect(surf, (40, 40, 60), scrollbar_bg, border_radius=5)
+                
+                # Manija del scrollbar
+                handle_h = max(20, int(scrollbar_h * (max_visible_lines / total_lines)))
+                handle_y = scrollbar_y + int((scrollbar_h - handle_h) * (self.log_scroll_offset / self.log_max_scroll)) if self.log_max_scroll > 0 else scrollbar_y
+                handle_rect = pygame.Rect(scrollbar_x, handle_y, scrollbar_w, handle_h)
+                pygame.draw.rect(surf, (100, 100, 140), handle_rect, border_radius=5)
+
+            # Puertas
+            if self.current_directory in self.doors:
+                for door_name, (door_rect, _) in self.doors[self.current_directory].items():
+                    # Determinar si es puerta Back y seleccionar imagen apropiada
+                    is_back_door = door_name == "Back"
+                    img_path = self.back_door_image_path if is_back_door else self.door_image_path
+                    
+                    # Calcular escala: 1.15x en hover, 0.95x si presionada
+                    is_hovered = self.near_door and self.near_door[1] == door_rect
+                    is_pressed = self.pressed_door == door_rect
+                    scale = 0.95 if is_pressed else (1.15 if is_hovered else 1.0)
+                    
+                    # Intentar dibujar imagen 1:1 centrada dentro del rect de la puerta
+                    pad = 6
+                    base_side = max(1, min(max(0, door_rect.w - pad * 2), max(0, door_rect.h - pad * 2)))
+                    side = int(base_side * scale)
+                    img = self._get_image_scaled(img_path, side)
+                    
+                    if img is not None:
+                        dst = img.get_rect(center=door_rect.center)
+                        # Offset de hundimiento si está presionada
+                        if is_pressed:
+                            dst.y += 3
+                        surf.blit(img, dst)
+                    else:
+                        # Fallback si no hay imagen: rect tradicional con color
+                        color_fill = self.hud_colors["door"]
+                        scaled_rect = pygame.Rect(0, 0, int(door_rect.w * scale), int(door_rect.h * scale))
+                        scaled_rect.center = door_rect.center
+                        if is_pressed:
+                            scaled_rect.y += 3
+                        pygame.draw.rect(surf, color_fill, scaled_rect, border_radius=5)
+                        # Etiqueta del nombre sólo en fallback
+                        text = self.fonts["normal"].render(door_name, True, (0, 0, 0))
+                        text_rect = text.get_rect(center=scaled_rect.center)
+                        surf.blit(text, text_rect)
+                    
+                    # Mostrar nombre de la puerta en hover
+                    if is_hovered:
+                        color_hi = self.hud_colors["door_highlight"]
+                        indicator_text = self.fonts["normal"].render(door_name, True, color_hi)
+                        indicator_pos = (door_rect.centerx, door_rect.top - 20)
+                        text_rect = indicator_text.get_rect(center=indicator_pos)
+                        surf.blit(indicator_text, text_rect)
+
+            # Archivos en el directorio actual
+            if self.current_directory in self.files_in_room:
+                for archivo in self.files_in_room[self.current_directory]:
+                    if archivo.eliminado:
+                        continue
+
+                    file_rect = archivo.rect
+
+                    # Calcular escala: 1.15x en hover solamente (sin efecto de presionado)
+                    is_hovered = self.near_file and self.near_file.nombre == archivo.nombre
+                    scale = 1.15 if is_hovered else 1.0
+
+                    # Color según estado (para borde o fallback)
+                    if archivo.en_cuarentena:
+                        color = (255, 165, 0)
+                    elif archivo.es_infectado:
+                        color = (255, 0, 0)
+                    elif archivo.es_sospechoso():
+                        color = (255, 255, 0)
+                    else:
+                        color = (200, 200, 200)
+
+                    # Resaltar si está seleccionado con borde blanco
+                    if self.archivo_seleccionado and self.archivo_seleccionado.nombre == archivo.nombre:
+                        pygame.draw.rect(surf, (255, 255, 255), file_rect.inflate(6, 6), 2, border_radius=4)
+
+                    # Intentar dibujar imagen personalizada del archivo con escala
+                    if archivo.image_path:
+                        pad = 2
+                        base_side = max(1, min(max(0, file_rect.w - pad * 2), max(0, file_rect.h - pad * 2)))
+                        side = int(base_side * scale)
+                        img = self._get_image_scaled(archivo.image_path, side)
+                        if img is not None:
+                            # Dibujar imagen sin tinting para mantener colores originales
+                            dst = img.get_rect(center=file_rect.center)
+                            surf.blit(img, dst)
+                            # Indicar estado con un borde de color en lugar de tinting
+                            if archivo.en_cuarentena or archivo.es_infectado or archivo.es_sospechoso():
+                                scaled_rect = pygame.Rect(0, 0, int(file_rect.w * scale), int(file_rect.h * scale))
+                                scaled_rect.center = file_rect.center
+                                pygame.draw.rect(surf, color, scaled_rect, 2, border_radius=3)
+                        else:
+                            # Fallback: rectángulo con color y escala
+                            scaled_rect = pygame.Rect(0, 0, int(file_rect.w * scale), int(file_rect.h * scale))
+                            scaled_rect.center = file_rect.center
+                            pygame.draw.rect(surf, color, scaled_rect, border_radius=3)
+                    else:
+                        # Sin imagen: usar rectángulo tradicional con escala
+                        scaled_rect = pygame.Rect(0, 0, int(file_rect.w * scale), int(file_rect.h * scale))
+                        scaled_rect.center = file_rect.center
+                        pygame.draw.rect(surf, color, scaled_rect, border_radius=3)
+                        nombre_corto = archivo.nombre[:8] + "..." if len(archivo.nombre) > 8 else archivo.nombre
+                        nombre_text = self.fonts["small"].render(nombre_corto, True, (0, 0, 0))
+                        text_rect = nombre_text.get_rect(center=scaled_rect.center)
+                        surf.blit(nombre_text, text_rect)
+                    
+                    # Mostrar nombre del archivo en hover
+                    if is_hovered:
+                        color_txt = (255, 255, 255)
+                        indicator_text = self.fonts["small"].render(archivo.nombre, True, color_txt)
+                        indicator_pos = (file_rect.centerx, file_rect.top - 10)
+                        text_rect = indicator_text.get_rect(center=indicator_pos)
+                        surf.blit(indicator_text, text_rect)
+
+            # Directorio actual y archivo seleccionado
+            dir_text = self.fonts["title"].render(f"Directory: {self.current_directory}", True, (255, 255, 255))
+            surf.blit(dir_text, (10, 10))
+
+            if self.archivo_seleccionado:
+                sel_text = self.fonts["normal"].render(f"Seleccionado: {self.archivo_seleccionado.nombre}", True,
+                                                       (0, 255, 255))
+                surf.blit(sel_text, (SCREEN_W - sel_text.get_width() - 10, 10))
+
+            # Progreso de acciones
+            self.dibujar_progreso_accion(surf)
+
+            if self.in_transition:
+                progress = self.transition_time / self.transition_duration
+                alpha = int(255 * (0.5 - abs(0.5 - progress)))
+                overlay = pygame.Surface((SCREEN_W, SCREEN_H))
+                overlay.fill((0, 0, 0))
+                overlay.set_alpha(alpha)
+                surf.blit(overlay, (0, 0))
+
+        elif self.state == "fin_juego":
+            fin_box = pygame.Rect(200, 200, 400, 200)
+            pygame.draw.rect(surf, (20, 20, 40), fin_box, border_radius=10)
+            pygame.draw.rect(surf, (100, 100, 200), fin_box, 2, border_radius=10)
+
+            mensaje = self.game_over_reason
+            if self.victory_condition:
+                mensaje += f"\nVirus eliminados: {self.viruses_cleaned}/{self.total_viruses}"
+            else:
+                mensaje += f"\nRecursos restantes: {self.recursos}"
+
+            lineas = mensaje.split('\n')
+            y_offset = fin_box.centery - (len(lineas) * 20) // 2
+
+            for linea in lineas:
+                texto = self.fonts["normal"].render(linea, True, (255, 255, 255))
+                surf.blit(texto, (fin_box.centerx - texto.get_width() // 2, y_offset))
+                y_offset += 25
+
+            continuar_text = self.fonts["small"].render("Presiona R para reiniciar", True, (200, 200, 200))
+            surf.blit(continuar_text, (fin_box.centerx - continuar_text.get_width() // 2, fin_box.bottom - 30))
+
+        if self.paused:
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150))
+            surf.blit(overlay, (0, 0))
+            pausa_text = self.fonts["title"].render("PAUSA", True, (255, 255, 255))
+            surf.blit(pausa_text,
+                      (SCREEN_W // 2 - pausa_text.get_width() // 2, SCREEN_H // 2 - pausa_text.get_height() // 2))
+
+            # --------- Clase principal del juego ----------
 class Game:
     def __init__(self):
         pygame.init()
@@ -3319,7 +3460,6 @@ class Game:
             pygame.display.flip()
 
         pygame.quit()
-
 
 # --------- Main ---------
 if __name__ == "__main__":
