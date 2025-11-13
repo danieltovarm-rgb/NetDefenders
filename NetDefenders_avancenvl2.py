@@ -4,7 +4,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from moviepy import VideoFileClip
 # NUEVO: Importar sistema de estadísticas
-from stats_system import PlayerStats, ScoreManager, MistakeLog
+from stats_system import PlayerStats, ScoreManager, MistakeLog, Level2GameManager
 
 # ----- Limpieza opcional de archivos compilados (.pyc) y __pycache__ -----
 # Para ahorrar espacio en entornos con capacidad limitada, eliminamos
@@ -54,7 +54,11 @@ except Exception:
 SCREEN_W, SCREEN_H = 800, 600
 FPS = 60
 
-
+# Helper para obtener rutas de assets
+def get_asset_path(relative_path):
+    """Obtiene la ruta absoluta de un archivo en assets"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(script_dir, relative_path)
 
 def draw_glitch_text_surf(dest_surf, text_surf, center, scale=1.0, glitch_prob=0.08):
     # scale base
@@ -286,6 +290,142 @@ class IntroVideoScreen(Screen):
             surf.blit(self.current_frame, (0, 0))
 
 
+# --------- Pantalla de Victoria (Video + Mensaje) ----------
+class VictoryVideoScreen(Screen):
+    def __init__(self, game, mensaje_adicional=""):
+        super().__init__(game)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        video_path = os.path.join(script_dir, "ganaste.mp4")
+        
+        self.video = VideoFileClip(video_path)
+        self.frame_gen = self.video.iter_frames(fps=25, dtype='uint8')
+        self.video_finished = False
+        self.mensaje_adicional = mensaje_adicional
+        
+        # Fuentes para mensaje
+        try:
+            self.font_titulo = pygame.font.Font(game.font_path, 36)
+            self.font_mensaje = pygame.font.Font(game.font_path, 22)
+        except:
+            self.font_titulo = pygame.font.SysFont("Arial", 36, bold=True)
+            self.font_mensaje = pygame.font.SysFont("Arial", 22)
+
+    def handle_event(self, event):
+        if self.video_finished and (event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN):
+            self.video.close()
+            self.game.change_screen(MenuScreen(self.game))
+
+    def update(self, dt):
+        if self.video_finished:
+            return
+        try:
+            frame = next(self.frame_gen)
+            frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+            frame_surface = pygame.transform.scale(frame_surface, (SCREEN_W, SCREEN_H))
+            self.current_frame = frame_surface
+        except StopIteration:
+            self.video_finished = True
+
+    def render(self, surf):
+        if hasattr(self, "current_frame") and not self.video_finished:
+            surf.blit(self.current_frame, (0, 0))
+        elif self.video_finished:
+            # Pantalla de mensaje después del video
+            surf.fill((10, 20, 30))
+            
+            # Título
+            titulo = self.font_titulo.render("¡FELICIDADES!", True, (0, 255, 100))
+            surf.blit(titulo, (SCREEN_W // 2 - titulo.get_width() // 2, 150))
+            
+            # Mensajes alentadores
+            mensajes = [
+                "Has completado exitosamente la misión de ciberseguridad.",
+                "Tu conocimiento y habilidades han protegido el sistema.",
+                "",
+                "La ciberseguridad es esencial en el mundo digital.",
+                "Cada virus eliminado es un paso hacia un entorno más seguro.",
+                "",
+                self.mensaje_adicional if self.mensaje_adicional else "",
+                "",
+                "Presiona cualquier tecla para continuar..."
+            ]
+            
+            y_offset = 250
+            for msg in mensajes:
+                if msg:
+                    texto = self.font_mensaje.render(msg, True, (200, 200, 200))
+                    surf.blit(texto, (SCREEN_W // 2 - texto.get_width() // 2, y_offset))
+                y_offset += 35
+
+
+# --------- Pantalla de Derrota (Video + Mensaje) ----------
+class DefeatVideoScreen(Screen):
+    def __init__(self, game, razon_derrota=""):
+        super().__init__(game)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        video_path = os.path.join(script_dir, "perdiste.mp4")
+        
+        self.video = VideoFileClip(video_path)
+        self.frame_gen = self.video.iter_frames(fps=25, dtype='uint8')
+        self.video_finished = False
+        self.razon_derrota = razon_derrota
+        
+        # Fuentes para mensaje
+        try:
+            self.font_titulo = pygame.font.Font(game.font_path, 36)
+            self.font_mensaje = pygame.font.Font(game.font_path, 22)
+        except:
+            self.font_titulo = pygame.font.SysFont("Arial", 36, bold=True)
+            self.font_mensaje = pygame.font.SysFont("Arial", 22)
+
+    def handle_event(self, event):
+        if self.video_finished and (event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN):
+            self.video.close()
+            self.game.change_screen(MenuScreen(self.game))
+
+    def update(self, dt):
+        if self.video_finished:
+            return
+        try:
+            frame = next(self.frame_gen)
+            frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+            frame_surface = pygame.transform.scale(frame_surface, (SCREEN_W, SCREEN_H))
+            self.current_frame = frame_surface
+        except StopIteration:
+            self.video_finished = True
+
+    def render(self, surf):
+        if hasattr(self, "current_frame") and not self.video_finished:
+            surf.blit(self.current_frame, (0, 0))
+        elif self.video_finished:
+            # Pantalla de mensaje después del video
+            surf.fill((30, 10, 10))
+            
+            # Título
+            titulo = self.font_titulo.render("¡NO TE RINDAS!", True, (255, 100, 100))
+            surf.blit(titulo, (SCREEN_W // 2 - titulo.get_width() // 2, 150))
+            
+            # Mensajes alentadores
+            mensajes = [
+                self.razon_derrota if self.razon_derrota else "El sistema ha sido comprometido.",
+                "",
+                "Cada error es una oportunidad de aprendizaje.",
+                "La ciberseguridad requiere práctica y perseverancia.",
+                "",
+                "Los profesionales cometen errores, pero aprenden de ellos.",
+                "¡Vuelve a intentarlo! Ahora tienes más conocimiento.",
+                "",
+                "Presiona cualquier tecla para volver al menú..."
+            ]
+            
+            y_offset = 250
+            for msg in mensajes:
+                if msg:
+                    texto = self.font_mensaje.render(msg, True, (220, 220, 220))
+                    surf.blit(texto, (SCREEN_W // 2 - texto.get_width() // 2, y_offset))
+                y_offset += 35
+
+
 # --------- Glitch Transition Screen ----------
 class GlitchTransitionScreen(Screen):
     def __init__(self, game, target_screen, duration=600, slices=18):
@@ -418,7 +558,7 @@ class LevelSelectScreen(Screen):
         self.create_levels()
         #imagen de fondo en la selección de niveles
         try:
-            self.background = pygame.image.load("assets/fondo_niveles 2.png").convert()
+            self.background = pygame.image.load(get_asset_path("assets/fondo_niveles 2.png")).convert()
             self.background = pygame.transform.scale(self.background, (SCREEN_W, SCREEN_H))
         except Exception:
             self.background = None
@@ -441,7 +581,7 @@ class LevelSelectScreen(Screen):
             self.back_label_font = pygame.font.SysFont("Consolas", 22)
         self.volver_image = None
         try:
-            for p in ("assets/boton_volver final 2.png", "assets/volver_button.png"):
+            for p in (get_asset_path("assets/boton_volver final 2.png"), get_asset_path("assets/volver_button.png")):
                 try:
                     img = pygame.image.load(p).convert_alpha()
                     img = pygame.transform.smoothscale(img, (48, 48))
@@ -477,13 +617,13 @@ class LevelSelectScreen(Screen):
         n2_unlocked = bool(self.game.unlocked_levels.get("Nivel 2", False))
         enabled_flags = [True, n2_unlocked, False]
         # Elegir imágenes; para Nivel 2 usar locked/unlocked con fallback
-        n2_img_primary = "assets/nivel2_unlocked.png" if n2_unlocked else "assets/nivel2_locked.png"
+        n2_img_primary = get_asset_path("assets/nivel2_unlocked.png" if n2_unlocked else "assets/nivel2_locked.png")
         # Fallbacks conocidos del repo anterior
-        n2_img_fallback = "assets/malware_unlocked.png" if n2_unlocked else "assets/malware_locked.png"
+        n2_img_fallback = get_asset_path("assets/malware_unlocked.png" if n2_unlocked else "assets/malware_locked.png")
         image_paths = [
-            "assets/nivel1_unlocked final 3.png",
+            get_asset_path("assets/nivel1_unlocked final 3.png"),
             n2_img_primary,
-            "assets/nivel3_locked.png"
+            get_asset_path("assets/nivel3_locked.png")
         ]
 
         for i in range(3):
@@ -687,7 +827,7 @@ class MenuScreen(Screen):
         self.create_buttons()
         # Fondo del menú 
         try:
-            self.menu_background = pygame.image.load("assets/fondo_menu.png").convert()
+            self.menu_background = pygame.image.load(get_asset_path("assets/fondo_menu.png")).convert()
             self.menu_background = pygame.transform.scale(self.menu_background, (SCREEN_W, SCREEN_H))
         except Exception:
             self.menu_background = None
@@ -870,8 +1010,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="ALERTA DE SEGURIDAD: Su contraseña ha caducado",
                 contenido="Estimado usuario,\n\nDetectamos un inicio de sesión inusual en su cuenta de Microsoft desde una ubicación no reconocida. Como medida de precaución, hemos caducado su contraseña.\n\nPara evitar la pérdida de acceso permanente a sus archivos de OneDrive y Outlook, debe verificar su cuenta inmediatamente.\n\nHaga clic en el siguiente enlace para actualizar su contraseña:\n[Enlace a portal falso]\n\nSi no completa esta acción en las próximas 2 horas, su cuenta será suspendida de forma permanente según nuestros términos de servicio. Apreciamos su cooperación.\n\nGracias,\nEquipo de Soporte de Microsoft",
                 razones_correctas=["Dominio", "Texto"],
-                logo_path="assets/logos/microsoft.png", # Usa el logo real para confundir
-                inbox_icon_path="assets/logos/microsoft_inbox.png",
+                logo_path=get_asset_path("assets/logos/microsoft.png"), # Usa el logo real para confundir
+                inbox_icon_path=get_asset_path("assets/logos/microsoft_inbox.png"),
             ),
 
             # LEGÍTIMO 1 (Interno)
@@ -882,8 +1022,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="Recordatorio: Nuevas políticas de vacaciones",
                 contenido="Hola equipo,\n\nEste es un recordatorio amistoso de que las nuevas políticas de solicitud de vacaciones entrarán en vigor el próximo mes, como se discusitó en la reunión trimestral.\n\nEl cambio principal es que todas las solicitudes de más de 3 días deben enviarse con al menos 30 días de antelación.\n\nPueden revisar el documento completo (PDF) en el portal interno de RH. No es necesario que respondan a este correo.\n\nQue tengan un buen día.\n\nSaludos,\nEl equipo de Recursos Humanos",
                 razones_correctas=[],
-                logo_path="assets/logos/synergy_corp.png", # Logo legítimo de la empresa
-                inbox_icon_path="assets/logos/synergy_corp_rh_inbox.png",
+                logo_path=get_asset_path("assets/logos/synergy_corp.png"), # Logo legítimo de la empresa
+                inbox_icon_path=get_asset_path("assets/logos/synergy_corp_rh_inbox.png"),
             ),
 
             # MALICIOSO 2 (Falla: Logo y Texto)
@@ -894,8 +1034,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="¡Felicidades! Ha ganado $500,000",
                 contenido="¡Es su día de suerte! ¡Ha ganado la Lotería Internacional!\n\nSu dirección de correo electrónico fue seleccionada al azar de una base de datos global como el ganador de nuestro sorteo mensual. ¡Ha ganado $500,000 USD!\n\nPara reclamar su premio, solo debe cubrir una pequeña 'tasa de procesamiento y transferencia bancaria internacional' de $20. Este pago es requerido por las regulaciones financieras.\n\nHaga clic aquí para pagar la tasa y recibir su premio. La oferta caduca en 24 horas.\n\n¡Felicidades de nuevo!",
                 razones_correctas=["Logo", "Texto"],
-                logo_path="assets/logos/loteria_falsa.png", # Un logo que se vea poco profesional
-                inbox_icon_path="assets/logos/loteria_falsa_inbox.png",
+                logo_path=get_asset_path("assets/logos/loteria_falsa.png"), # Un logo que se vea poco profesional
+                inbox_icon_path=get_asset_path("assets/logos/loteria_falsa_inbox.png"),
             ),
 
             # LEGÍTIMO 2 (Externo)
@@ -906,8 +1046,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="Tienes una nueva invitación para conectar",
                 contenido="Hola Analista,\n\nJuan Pérez, quien es Gerente de Ciberseguridad en la empresa 'CyberCore Dynamics', te ha enviado una invitación para conectar en LinkedIn.\n\nExpandir tu red profesional es una excelente forma de mantenerte al día con las tendencias de la industria.\n\nPor favor, inicia sesión de forma segura en el sitio web o la aplicación oficial de LinkedIn para ver el perfil de Juan y aceptar o rechazar la invitación.\n\nSaludos,\nEl equipo de LinkedIn",
                 razones_correctas=[],
-                logo_path="assets/logos/linkedin.png", # Logo legítimo
-                inbox_icon_path="assets/logos/linkedin_inbox.png",
+                logo_path=get_asset_path("assets/logos/linkedin.png"), # Logo legítimo
+                inbox_icon_path=get_asset_path("assets/logos/linkedin_inbox.png"),
             ),
 
             # MALICIOSO 3 (Falla: Texto PURO) - El más difícil
@@ -918,8 +1058,8 @@ class Level1Screen(BaseLevelScreen):
                 asunto="[ACCIÓN REQUERIDA] Migración de buzón de correo",
                 contenido="Hola empleado,\n\nDebido a una actualización crítica de seguridad, estamos migrando todos los buzones al nuevo servidor en la nube (Exchange vNext) esta noche a las 2:00 AM.\n\nPara asegurar que sus correos, contactos y calendario se sincronicen correctamente, necesitamos que valide sus credenciales en el portal de migración ANTES de esa hora.\n\nPor favor, inicie sesión en el portal de migración con su correo y contraseña habituales:\n[Enlace a portal de phishing]\n\nSi no completa esta validación, su buzón podría corromperse y perdería sus datos. Entendemos que esto es urgente, pero es necesario para proteger la red.\n\nGracias,\nDepartamento de IT.",
                 razones_correctas=["Texto"],
-                logo_path="assets/logos/synergy_corp.png", # Logo legítimo de la empresa
-                inbox_icon_path="assets/logos/synergy_corp_it_inbox.png",
+                logo_path=get_asset_path("assets/logos/synergy_corp.png"), # Logo legítimo de la empresa
+                inbox_icon_path=get_asset_path("assets/logos/synergy_corp_it_inbox.png"),
             ),
 
             # MALICIOSO 4 (Spear Phishing del Hacker) - Correo final
@@ -931,7 +1071,7 @@ class Level1Screen(BaseLevelScreen):
                 contenido="\nLindo simulador, 'analista'.\n\nHas estado fastidioso reportando mis correos. Pero todos cometen un error...\n\n¿Estás seguro de que ese correo de 'RH' era realmente de RH? ¿O el de 'IT'? Qué paranoia.\n\nSigue jugando a proteger tu red. Sigue haciendo clic en 'Reportar'.\n\nNos veremos en el mundo real. ;-)\n\n- BlackHat",
                 razones_correctas=["Dominio", "Texto"],
                 logo_path=None, # Sin logo
-                inbox_icon_path="assets/logos/hacker_inbox.png"
+                inbox_icon_path=get_asset_path("assets/logos/hacker_inbox.png")
             )
         ]
 
@@ -1375,7 +1515,7 @@ class Level1Screen(BaseLevelScreen):
 # --------- Clase Protagonista (Visual) ----------
 class ProtagonistaSprite:
     def __init__(self, x, y):
-        self.image = pygame.image.load("assets/protagonista/idle.png").convert_alpha()
+        self.image = pygame.image.load(get_asset_path("assets/protagonista/idle.png")).convert_alpha()
         self.image = pygame.transform.scale(self.image, (200, 200))
         self.rect = self.image.get_rect(center=(x, y))
 
@@ -1397,7 +1537,7 @@ class HackerSprite:
     def __init__(self, x, y, image_paths, scale=(200, 200)):
         self.frames = []
         for path in image_paths:
-            img = pygame.image.load(path).convert_alpha()
+            img = pygame.image.load(get_asset_path(path)).convert_alpha()
             img = pygame.transform.scale(img, scale)
             self.frames.append(img)
 
@@ -1869,11 +2009,11 @@ class EmailPanel:
         # botones
         self.btn_back = ImageButton((0, 0), (80, 30), label_text="Volver", font=font_text)
         self.btn_responder = ImageButton((0, 0), (160, 44),
-            image_paths=["assets/btn_responder.png", "assets/btn_reply.png"], label_text="Responder", font=font_buttons)
+            image_paths=[get_asset_path("assets/btn_responder.png"), get_asset_path("assets/btn_reply.png")], label_text="Responder", font=font_buttons)
         self.btn_eliminar = ImageButton((0, 0), (160, 44),
-            image_paths=["assets/btn_eliminar.png", "assets/btn_delete.png"], label_text="Eliminar", font=font_buttons)
+            image_paths=[get_asset_path("assets/btn_eliminar.png"), get_asset_path("assets/btn_delete.png")], label_text="Eliminar", font=font_buttons)
         self.btn_reportar = ImageButton((0, 0), (160, 44),
-            image_paths=["assets/btn_reportar.png", "assets/btn_report.png"], label_text="Reportar", font=font_buttons)
+            image_paths=[get_asset_path("assets/btn_reportar.png"), get_asset_path("assets/btn_report.png")], label_text="Reportar", font=font_buttons)
 
         # flujo de razones
         self.mode = "reading"
@@ -2239,11 +2379,365 @@ class GestorVirus:
         return any(self.sintomas_activos.values())
 
 
+# ========== SISTEMA EDUCATIVO NIVEL 2 ==========
+
+class MensajeOverlay:
+    """Representa un mensaje educativo en el overlay"""
+    def __init__(self, tipo, titulo, bullets, sabias_que="", prioridad=60, callback=None):
+        self.tipo = tipo  # 'quiz', 'tutor_refuerzo', 'tutor_error', 'tutor_tip'
+        self.titulo = titulo
+        self.bullets = bullets  # Lista de 2-3 strings
+        self.sabias_que = sabias_que
+        self.prioridad = prioridad
+        self.callback = callback  # Función a llamar al cerrar
+        self.timestamp = pygame.time.get_ticks()
+
+
+class QuizManager:
+    """Gestiona los quizzes educativos del Nivel 2"""
+    def __init__(self):
+        # Banco de quizzes hardcodeado
+        self.quizzes = {
+            'ransomware': {
+                'pregunta': "¿Qué señal del sistema indica ransomware?",
+                'opciones': [
+                    "CPU al 100% en reposo",
+                    "Cifrado y notas de rescate",  # CORRECTA
+                    "Barras de navegador nuevas"
+                ],
+                'correcta': 1,
+                'tip': "El cifrado + notas son rasgos clave de ransomware."
+            },
+            'adware': {
+                'pregunta': "Tras instalar 'gratis', aparece... ¿qué sugiere adware?",
+                'opciones': [
+                    "Teclas fantasma",
+                    "Pop-ups/barras no deseadas",  # CORRECTA
+                    "Archivos cifrados"
+                ],
+                'correcta': 1,
+                'tip': "Los pop-ups y barras se asocian a adware."
+            },
+            'miner': {
+                'pregunta': "¿Qué te hace sospechar de un cripto-minero?",
+                'opciones': [
+                    "100% CPU en idle",  # CORRECTA
+                    "Notas de rescate",
+                    "Correos pidiendo contraseñas"
+                ],
+                'correcta': 0,
+                'tip': "Miner explota CPU/GPU de forma constante."
+            },
+            'spyware': {
+                'pregunta': "¿Qué indicio encaja con spyware?",
+                'opciones': [
+                    "Teclas fantasma + exfiltración",  # CORRECTA
+                    "Pop-ups",
+                    "Extensiones cifradas"
+                ],
+                'correcta': 0,
+                'tip': "Spyware registra/extrae información."
+            }
+        }
+    
+    def obtener_quiz(self, tipo_malware):
+        """Retorna el quiz para un tipo de malware"""
+        return self.quizzes.get(tipo_malware)
+
+
+class GestorMensajesEducativos:
+    """Gestiona los mensajes educativos por síntoma/malware"""
+    def __init__(self):
+        self.mensajes = {
+            'ransomware': {
+                'sintoma': 'pantalla_bloqueada',
+                'tip_bullets': [
+                    "Bloquea el acceso y exige pago.",
+                    "Señal: notas RECOVER/README. Cambios masivos de extensión.",
+                    "Evita pagar; prioriza aislar/quitar."
+                ],
+                'sabias_que': "El ransomware puede cifrar archivos en minutos. Las copias de seguridad son tu mejor defensa.",
+                'refuerzo_bullets': [
+                    "Correcto: aislaste/eliminaste el origen del bloqueo.",
+                    "Buena práctica: copias de seguridad + lista de procesos confiables."
+                ]
+            },
+            'adware': {
+                'sintoma': 'popups',
+                'tip_bullets': [
+                    "Anuncios intrusivos tras instaladores 'gratis'.",
+                    "Señal: barras de navegador, ejecutables genéricos.",
+                    "Evita instalar 'bundles'."
+                ],
+                'sabias_que': "El adware se instala junto con software 'gratuito'. Lee siempre los permisos de instalación.",
+                'refuerzo_bullets': [
+                    "Aislar/quitar corta los popups.",
+                    "Revisa descargas sospechosas."
+                ]
+            },
+            'miner': {
+                'sintoma': 'ralentizacion',
+                'tip_bullets': [
+                    "Usa CPU/GPU para minar criptomonedas.",
+                    "Señal: 100% CPU en reposo, procesos con nombres 'de sistema'.",
+                    "Consulta uso CPU antes de borrar."
+                ],
+                'sabias_que': "Los mineros pueden generar calor excesivo y dañar tu hardware a largo plazo.",
+                'refuerzo_bullets': [
+                    "La limpieza recupera rendimiento.",
+                    "Actualiza y limita ejecución desconocida."
+                ]
+            },
+            'spyware': {
+                'sintoma': 'teclas_fantasma',
+                'tip_bullets': [
+                    "Roba pulsaciones/pantalla.",
+                    "Señal: envío de datos inusual.",
+                    "Desconfía de adjuntos ejecutables."
+                ],
+                'sabias_que': "El spyware puede capturar contraseñas y datos bancarios sin que lo notes.",
+                'refuerzo_bullets': [
+                    "Eliminaste el keylogger: cambio de credenciales recomendado.",
+                    "Activa 2FA cuando sea posible."
+                ]
+            }
+        }
+        
+        # Mensajes de error puntuales
+        self.errores = {
+            'limpiar_seguro': {
+                'titulo': "⚠️ Error: Archivo seguro eliminado",
+                'bullets': [
+                    "Confirma extensión real y horario de modificación.",
+                    "No borres archivos de sistema sin evidencia clara."
+                ],
+                'sabias_que': "Eliminar archivos del sistema puede causar inestabilidad. Verifica dos veces antes de actuar."
+            },
+            'cuarentena_seguro': {
+                'titulo': "⚠️ Falso positivo",
+                'bullets': [
+                    "Este archivo era seguro.",
+                    "Valida el tipo de archivo y su ubicación antes de aislar."
+                ],
+                'sabias_que': "Los falsos positivos pueden interrumpir operaciones legítimas. Analiza con cuidado."
+            }
+        }
+    
+    def obtener_tip(self, tipo_malware):
+        """Obtiene el tip educativo para cuando se activa un síntoma"""
+        datos = self.mensajes.get(tipo_malware, {})
+        return {
+            'titulo': f"🔍 Detectado: {tipo_malware.capitalize()}",
+            'bullets': datos.get('tip_bullets', []),
+            'sabias_que': datos.get('sabias_que', '')
+        }
+    
+    def obtener_refuerzo(self, tipo_malware):
+        """Obtiene el refuerzo educativo tras limpiar/aislar"""
+        datos = self.mensajes.get(tipo_malware, {})
+        return {
+            'titulo': f"✅ Bien hecho",
+            'bullets': datos.get('refuerzo_bullets', []),
+            'sabias_que': f"Síntoma '{datos.get('sintoma', '')}' desactivado correctamente."
+        }
+    
+    def obtener_error(self, tipo_error):
+        """Obtiene mensaje de error educativo"""
+        return self.errores.get(tipo_error, {
+            'titulo': '⚠️ Error',
+            'bullets': ['Verifica antes de actuar.'],
+            'sabias_que': ''
+        })
+
+
+class OverlayEducativo:
+    """Sistema de overlay con cola de prioridades y cooldowns"""
+    def __init__(self, screen_w, screen_h):
+        self.screen_w = screen_w
+        self.screen_h = screen_h
+        self.cola_mensajes = []  # Cola con prioridades
+        self.mensaje_actual = None
+        self.ultimo_mensaje_tiempo = 0
+        self.cooldowns = {
+            'quiz': 0,
+            'tutor_refuerzo': 8000,  # 8 segundos
+            'tutor_error': 6000,      # 6 segundos
+            'tutor_tip': 10000        # 10 segundos
+        }
+        self.ultimo_por_tipo = {}  # tipo -> timestamp
+        
+        # Configuración visual
+        self.ancho = 600
+        self.alto = 350
+        self.x = (screen_w - self.ancho) // 2
+        self.y = (screen_h - self.alto) // 2 + 30
+        
+        # Fuentes
+        try:
+            self.font_titulo = pygame.font.Font(get_asset_path("texto.ttf"), 24)
+            self.font_bullet = pygame.font.Font(get_asset_path("texto.ttf"), 18)
+            self.font_pequeño = pygame.font.Font(get_asset_path("texto.ttf"), 16)
+        except:
+            self.font_titulo = pygame.font.SysFont("Arial", 24, bold=True)
+            self.font_bullet = pygame.font.SysFont("Arial", 18)
+            self.font_pequeño = pygame.font.SysFont("Arial", 16, italic=True)
+    
+    def puede_mostrar(self, tipo):
+        """Verifica si se puede mostrar un mensaje de este tipo (cooldown)"""
+        cooldown = self.cooldowns.get(tipo, 0)
+        if cooldown == 0:  # Quiz no tiene cooldown
+            return True
+        
+        ahora = pygame.time.get_ticks()
+        ultimo = self.ultimo_por_tipo.get(tipo, 0)
+        return (ahora - ultimo) >= cooldown
+    
+    def agregar_mensaje(self, mensaje):
+        """Agrega un mensaje a la cola con prioridad"""
+        if not self.puede_mostrar(mensaje.tipo):
+            return False
+        
+        # Insertar en cola ordenada por prioridad (mayor primero)
+        self.cola_mensajes.append(mensaje)
+        self.cola_mensajes.sort(key=lambda m: m.prioridad, reverse=True)
+        
+        # Si no hay mensaje actual, mostrar inmediatamente
+        if self.mensaje_actual is None:
+            self.mostrar_siguiente()
+        
+        return True
+    
+    def mostrar_siguiente(self):
+        """Muestra el siguiente mensaje de la cola"""
+        if self.cola_mensajes:
+            self.mensaje_actual = self.cola_mensajes.pop(0)
+            self.ultimo_por_tipo[self.mensaje_actual.tipo] = pygame.time.get_ticks()
+        else:
+            self.mensaje_actual = None
+    
+    def cerrar_actual(self):
+        """Cierra el mensaje actual y ejecuta callback si existe"""
+        if self.mensaje_actual:
+            if self.mensaje_actual.callback:
+                self.mensaje_actual.callback()
+            self.mensaje_actual = None
+            self.mostrar_siguiente()
+    
+    def esta_activo(self):
+        """Verifica si hay un overlay visible"""
+        return self.mensaje_actual is not None
+    
+    def update(self, dt):
+        """Actualiza el sistema de overlay (cooldowns, etc)"""
+        # Por ahora solo necesitamos que exista el método
+        # Los cooldowns se manejan con pygame.time.get_ticks()
+        pass
+    
+    def handle_event(self, event):
+        """Maneja eventos de click/ESC para cerrar overlay"""
+        if not self.esta_activo():
+            return False
+        
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.cerrar_actual()
+            return True
+        
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Click dentro del overlay
+            overlay_rect = pygame.Rect(self.x, self.y, self.ancho, self.alto)
+            if overlay_rect.collidepoint(event.pos):
+                # Si es quiz, no cerrar con click genérico (tiene sus propios botones)
+                if self.mensaje_actual.tipo != 'quiz':
+                    self.cerrar_actual()
+                return True
+        
+        return False
+    
+    def render(self, surf):
+        """Renderiza el overlay actual"""
+        if not self.esta_activo():
+            return
+        
+        # Fondo semitransparente oscuro
+        overlay_bg = pygame.Surface((self.screen_w, self.screen_h), pygame.SRCALPHA)
+        overlay_bg.fill((0, 0, 0, 180))
+        surf.blit(overlay_bg, (0, 0))
+        
+        # Caja del mensaje
+        caja_rect = pygame.Rect(self.x, self.y, self.ancho, self.alto)
+        pygame.draw.rect(surf, (30, 35, 45), caja_rect, border_radius=10)
+        pygame.draw.rect(surf, (0, 200, 255), caja_rect, 3, border_radius=10)
+        
+        # Título
+        titulo_surf = self.font_titulo.render(self.mensaje_actual.titulo, True, (255, 255, 100))
+        titulo_x = self.x + (self.ancho - titulo_surf.get_width()) // 2
+        surf.blit(titulo_surf, (titulo_x, self.y + 20))
+        
+        # Bullets
+        y_offset = self.y + 70
+        for bullet in self.mensaje_actual.bullets:
+            bullet_surf = self.font_bullet.render(f"• {bullet}", True, (220, 220, 220))
+            surf.blit(bullet_surf, (self.x + 30, y_offset))
+            y_offset += 35
+        
+        # ¿Sabías que...?
+        if self.mensaje_actual.sabias_que:
+            y_offset += 15
+            sabias_titulo = self.font_bullet.render("¿Sabías que...?", True, (100, 200, 255))
+            surf.blit(sabias_titulo, (self.x + 30, y_offset))
+            y_offset += 30
+            
+            # Wrap del texto
+            palabras = self.mensaje_actual.sabias_que.split()
+            linea = ""
+            for palabra in palabras:
+                test_linea = linea + palabra + " "
+                if self.font_pequeño.size(test_linea)[0] < self.ancho - 60:
+                    linea = test_linea
+                else:
+                    linea_surf = self.font_pequeño.render(linea, True, (180, 180, 180))
+                    surf.blit(linea_surf, (self.x + 40, y_offset))
+                    y_offset += 25
+                    linea = palabra + " "
+            
+            if linea:
+                linea_surf = self.font_pequeño.render(linea, True, (180, 180, 180))
+                surf.blit(linea_surf, (self.x + 40, y_offset))
+        
+        # Instrucción para cerrar (si no es quiz)
+        if self.mensaje_actual.tipo != 'quiz':
+            cerrar_text = self.font_pequeño.render("Click o ESC para continuar", True, (150, 150, 150))
+            cerrar_x = self.x + (self.ancho - cerrar_text.get_width()) // 2
+            surf.blit(cerrar_text, (cerrar_x, self.y + self.alto - 35))
+
+
 # --------- Nivel 2: Análisis y limpieza de PC ----------
 class Level2Screen(Screen):
     def __init__(self, game):
         super().__init__(game)
-        self.state = "narrativa_inicial"
+        self.state = "tutor_inicial"  # Cambiado de "narrativa_inicial" a "tutor_inicial"
+        
+        # Mensaje del tutor
+        self.tutor_mensaje = [
+            "¡Bienvenido al Nivel 2: Defensa Avanzada!",
+            "",
+            "Tu misión es proteger el sistema de múltiples amenazas:",
+            "- RANSOMWARE: Cifra archivos y bloquea la pantalla",
+            "- ADWARE: Muestra anuncios molestos",
+            "- MINER: Usa tu CPU para minar criptomonedas",
+            "- SPYWARE: Registra tus teclas y roba información",
+            "",
+            "Herramientas disponibles:",
+            "• INSPECCIONAR: Ver detalles del archivo (gratis)",
+            "• ESCANEAR: Detectar virus (10 recursos por archivo, 15 por carpeta)",
+            "• CUARENTENA: Aislar virus temporalmente (8 recursos)",
+            "• LIMPIAR: Eliminar virus permanentemente (gratis si es virus)",
+            "",
+            "¡CUIDADO! Los síntomas aparecerán si no actúas rápido.",
+            "Elimina TODOS los virus antes de quedarte sin recursos.",
+            "",
+            "Presiona ENTER para comenzar..."
+        ]
 
         # Sistema de archivos y virus
         self.gestor_virus = GestorVirus()
@@ -2254,6 +2748,8 @@ class Level2Screen(Screen):
 
         # Sistema de recursos
         self.recursos = 100
+        self.recursos_display = 100.0  # Para animación suave del número
+        self.recursos_anterior = 100  # Para detectar cambios
         self.costos_acciones = {
             "inspeccionar": 0,
             "escanear_archivo": 10,
@@ -2317,17 +2813,17 @@ class Level2Screen(Screen):
         }
 
         # Imágenes para puertas (1:1). Si no existen, se usa fallback (rectángulo).
-        self.door_image_path = os.path.join("assets", "doors", "door.png")
-        self.back_door_image_path = os.path.join("assets", "doors", "back_door.png")
+        self.door_image_path = get_asset_path(os.path.join("assets", "doors", "door.png"))
+        self.back_door_image_path = get_asset_path(os.path.join("assets", "doors", "back_door.png"))
         # Cache unificado para todas las imágenes por (ruta, tamaño)
         self._image_cache = {}
 
         # Imágenes para las herramientas (iconos de acciones)
         self.tool_images = {
-            "Inspeccionar": os.path.join("assets", "tools", "inspeccionar.png"),
-            "Escanear": os.path.join("assets", "tools", "escanear.png"),
-            "Cuarentena": os.path.join("assets", "tools", "cuarentena.png"),
-            "Limpiar": os.path.join("assets", "tools", "limpiar.png")
+            "Inspeccionar": get_asset_path(os.path.join("assets", "tools", "inspeccionar.png")),
+            "Escanear": get_asset_path(os.path.join("assets", "tools", "escanear.png")),
+            "Cuarentena": get_asset_path(os.path.join("assets", "tools", "cuarentena.png")),
+            "Limpiar": get_asset_path(os.path.join("assets", "tools", "limpiar.png"))
         }
 
         # Panel central de referencia para puertas
@@ -2441,9 +2937,9 @@ class Level2Screen(Screen):
         # Fuentes
         # Cargar fuente personalizada desde archivo texto.ttf (fallback a default si falla)
         try:
-            custom_font_title = pygame.font.Font("texto.ttf", 24)
-            custom_font_normal = pygame.font.Font("texto.ttf", 20)
-            custom_font_small = pygame.font.Font("texto.ttf", 16)
+            custom_font_title = pygame.font.Font(get_asset_path("texto.ttf"), 24)
+            custom_font_normal = pygame.font.Font(get_asset_path("texto.ttf"), 20)
+            custom_font_small = pygame.font.Font(get_asset_path("texto.ttf"), 16)
         except Exception:
             custom_font_title = pygame.font.Font(None, 24)
             custom_font_normal = pygame.font.Font(None, 20)
@@ -2521,57 +3017,57 @@ class Level2Screen(Screen):
         self.files_in_room = {
             "C:/": [
                 ArchivoSistema("readme.txt", ".txt", "1 KB", "15/03/2024 10:30", "Lectura", False, 
-                               image_path=os.path.join("assets", "files", "txt.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "txt.png"))),
                 ArchivoSistema("config.sys", ".sys", "2 KB", "14/03/2024 14:15", "Sistema", False,
-                               image_path=os.path.join("assets", "files", "sys.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "sys.png"))),
                 ArchivoSistema("autoexec.bat", ".bat", "1 KB", "13/03/2024 09:20", "Ejecución", False,
-                               image_path=os.path.join("assets", "files", "bat.png"))
+                               image_path=get_asset_path(os.path.join("assets", "files", "bat.png")))
             ],
             "C:/Users/Admin/Documents": [
                 ArchivoSistema("document1.doc", ".doc", "250 KB", "16/03/2024 11:00", "Lectura/Escritura", False,
-                               image_path=os.path.join("assets", "files", "doc.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "doc.png"))),
                 ArchivoSistema("budget.xlsx", ".xlsx", "450 KB", "16/03/2024 10:00", "Lectura/Escritura", False,
-                               image_path=os.path.join("assets", "files", "xlsx.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "xlsx.png"))),
                 ArchivoSistema("presentation.ppt", ".ppt", "1.2 MB", "15/03/2024 16:30", "Lectura", False,
-                               image_path=os.path.join("assets", "files", "ppt.png"))
+                               image_path=get_asset_path(os.path.join("assets", "files", "ppt.png")))
             ],
             "C:/Users/Admin/Downloads": [
                 ArchivoSistema("GIMP_Installer.exe", ".exe", "120 MB", "16/03/2024 09:45", "Ejecución", False,
-                               image_path=os.path.join("assets", "files", "exe.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "exe.png"))),
                 ArchivoSistema("Free_Game.exe", ".exe", "420 KB", "15/03/2024 04:30", "Ejecución", True, "adware", 85,
-                               "popups", image_path=os.path.join("assets", "files", "exe.png")),
+                               "popups", image_path=get_asset_path(os.path.join("assets", "files", "exe.png"))),
                 ArchivoSistema("invoice_2025.pdf", ".pdf", "2.3 MB", "16/03/2024 11:20", "Lectura", False,
-                               image_path=os.path.join("assets", "files", "pdf.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "pdf.png"))),
                 ArchivoSistema("crypto_miner.exe", ".exe", "320 KB", "15/03/2024 03:15", "Ejecución", True, "miner", 92,
-                               "ralentizacion", image_path=os.path.join("assets", "files", "exe.png")),
+                               "ralentizacion", image_path=get_asset_path(os.path.join("assets", "files", "exe.png"))),
                 ArchivoSistema("movie.mp4", ".mp4", "1.5 GB", "14/03/2024 20:15", "Lectura", False,
-                               image_path=os.path.join("assets", "files", "mp4.png"))
+                               image_path=get_asset_path(os.path.join("assets", "files", "mp4.png")))
             ],
             "C:/Windows/System32": [
                 ArchivoSistema("kernel32.dll", ".dll", "1.2 MB", "10/03/2024 08:00", "Sistema", False,
-                               image_path=os.path.join("assets", "files", "dll.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "dll.png"))),
                 ArchivoSistema("x_virus.exe", ".exe", "520 KB", "14/03/2024 04:30", "Ejecución", True, "ransomware", 95,
-                               "pantalla_bloqueada", image_path=os.path.join("assets", "files", "exe.png")),
+                               "pantalla_bloqueada", image_path=get_asset_path(os.path.join("assets", "files", "exe.png"))),
                 ArchivoSistema("user32.dll", ".dll", "890 KB", "10/03/2024 08:00", "Sistema", False,
-                               image_path=os.path.join("assets", "files", "dll.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "dll.png"))),
                 ArchivoSistema("spy_tool.exe", ".exe", "280 KB", "15/03/2024 02:45", "Ejecución", True, "spyware", 78,
-                               "teclas_fantasma", image_path=os.path.join("assets", "files", "exe.png")),
+                               "teclas_fantasma", image_path=get_asset_path(os.path.join("assets", "files", "exe.png"))),
                 ArchivoSistema("winlogon.exe", ".exe", "1.1 MB", "10/03/2024 08:00", "Sistema", False,
-                               image_path=os.path.join("assets", "files", "exe.png"))
+                               image_path=get_asset_path(os.path.join("assets", "files", "exe.png")))
             ],
             "C:/Temp": [
                 ArchivoSistema("temp_file.tmp", ".tmp", "15 KB", "16/03/2024 12:05", "Lectura/Escritura", False,
-                               image_path=os.path.join("assets", "files", "temp.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "temp.png"))),
                 ArchivoSistema("adware_bundle.exe", ".exe", "650 KB", "15/03/2024 04:30", "Ejecución", True, "adware",
-                               88, "popups", image_path=os.path.join("assets", "files", "exe.png")),
+                               88, "popups", image_path=get_asset_path(os.path.join("assets", "files", "exe.png"))),
                 ArchivoSistema("logfile.log", ".log", "3 KB", "16/03/2024 12:10", "Lectura", False,
-                               image_path=os.path.join("assets", "files", "log.png"))
+                               image_path=get_asset_path(os.path.join("assets", "files", "log.png")))
             ],
             "C:/Program Files": [
                 ArchivoSistema("program1.exe", ".exe", "5.2 MB", "13/03/2024 12:00", "Ejecución", False,
-                               image_path=os.path.join("assets", "files", "exe.png")),
+                               image_path=get_asset_path(os.path.join("assets", "files", "exe.png"))),
                 ArchivoSistema("program2.dll", ".dll", "1.8 MB", "13/03/2024 12:00", "Sistema", False,
-                               image_path=os.path.join("assets", "files", "dll.png"))
+                               image_path=get_asset_path(os.path.join("assets", "files", "dll.png")))
             ]
         }
 
@@ -2602,6 +3098,25 @@ class Level2Screen(Screen):
                     self.gestor_virus.activar_sintoma(archivo.tipo_virus)
 
         self.paused = False
+
+        # INTEGRACIÓN: Sistema de gestión de Nivel 2 (OOP)
+        self.level2_manager = Level2GameManager(total_threats=self.total_viruses)
+        
+        # INTEGRACIÓN: Configurar nivel en PlayerStats
+        self.game.player_stats.set_current_level(2)
+        
+        # Registrar síntomas iniciales en el manager
+        for directorio, archivos in self.files_in_room.items():
+            for archivo in archivos:
+                if archivo.es_infectado and archivo.tipo_virus:
+                    self.level2_manager.activate_virus_symptom(archivo.tipo_virus, archivo.nombre)
+
+        # SISTEMA EDUCATIVO
+        self.overlay_educativo = OverlayEducativo(SCREEN_W, SCREEN_H)
+        self.quiz_manager = QuizManager()
+        self.gestor_mensajes = GestorMensajesEducativos()
+        self.archivos_con_quiz = set()  # IDs de archivos que ya tuvieron quiz
+        self.sintomas_tip_mostrado = set()  # Síntomas que ya mostraron tip
 
         # Actualizar panel de archivos inicial
         self.actualizar_panel_archivos()
@@ -2750,11 +3265,18 @@ class Level2Screen(Screen):
             probabilidad = self.archivo_seleccionado.probabilidad_infeccion
             if self.archivo_seleccionado.es_infectado:
                 mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {probabilidad}% riesgo - {self.archivo_seleccionado.tipo_virus.upper()}"
+                self.show_message(mensaje)
+                
+                # SISTEMA EDUCATIVO: Mostrar quiz si no se ha mostrado antes
+                archivo_id = id(self.archivo_seleccionado)
+                if archivo_id not in self.archivos_con_quiz:
+                    self.mostrar_quiz_malware(self.archivo_seleccionado)
+                    self.archivos_con_quiz.add(archivo_id)
             else:
                 # Para archivos limpios, mostrar un porcentaje bajo aleatorio
                 riesgo = random.randint(0, 15)
                 mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {riesgo}% riesgo - LIMPIO"
-            self.show_message(mensaje)
+                self.show_message(mensaje)
 
     def _completar_escaneo_carpeta(self):
         """Completa el escaneo de la carpeta actual"""
@@ -2783,25 +3305,193 @@ class Level2Screen(Screen):
             mensaje += f"{nombre}: {riesgo}% - {estado}\n"
         self.show_message(mensaje)
 
+    # =============================================================================
+    # MÉTODOS DEL SISTEMA EDUCATIVO
+    # =============================================================================
+
+    def mostrar_quiz_malware(self, archivo):
+        """Muestra un quiz educativo sobre el tipo de malware detectado"""
+        quiz_data = self.quiz_manager.obtener_quiz(archivo.tipo_virus)
+        if not quiz_data:
+            return
+        
+        # Crear overlay de quiz con botones
+        def responder_quiz(opcion_elegida):
+            correcta = quiz_data['correcta']
+            es_correcto = (opcion_elegida == correcta)
+            
+            if es_correcto:
+                # +4 recursos
+                self.recursos += 4
+                self.level2_manager.resource_bar.add(4)
+                
+                bullets = [
+                    f"✅ Correcto: {quiz_data['opciones'][correcta]}",
+                    quiz_data['tip'],
+                    f"+4 recursos (total: {self.recursos})"
+                ]
+                titulo = "🎯 ¡Bien hecho!"
+                
+                # Telemetría
+                self.game.player_stats.mistake_log.add_mistake(
+                    level=2,
+                    mistake_type="quiz_ok",
+                    description=f"Quiz respondido correctamente: {archivo.tipo_virus}",
+                    mistake_details={
+                        "archivo": archivo.nombre,
+                        "malware": archivo.tipo_virus,
+                        "delta_recursos": 4
+                    }
+                )
+            else:
+                # -2 recursos
+                self.recursos = max(0, self.recursos - 2)
+                self.level2_manager.resource_bar.consume(2)
+                
+                bullets = [
+                    f"❌ Incorrecto. Correcta: {quiz_data['opciones'][correcta]}",
+                    quiz_data['tip'],
+                    f"-2 recursos (total: {self.recursos})"
+                ]
+                titulo = "📚 Aprende de esto"
+                
+                # Telemetría
+                self.game.player_stats.mistake_log.add_mistake(
+                    level=2,
+                    mistake_type="quiz_fail",
+                    description=f"Quiz respondido incorrectamente: {archivo.tipo_virus}",
+                    mistake_details={
+                        "archivo": archivo.nombre,
+                        "malware": archivo.tipo_virus,
+                        "delta_recursos": -2
+                    }
+                )
+            
+            # Mostrar resultado
+            msg = MensajeOverlay('tutor_refuerzo', titulo, bullets, "", prioridad=80)
+            self.overlay_educativo.agregar_mensaje(msg)
+        
+        # Crear mensaje de quiz con opciones
+        bullets = [
+            quiz_data['pregunta'],
+            "",
+            f"A) {quiz_data['opciones'][0]}",
+            f"B) {quiz_data['opciones'][1]}",
+            f"C) {quiz_data['opciones'][2]}"
+        ]
+        
+        # Por ahora, simplificamos: el quiz se "auto-responde" aleatoriamente
+        # En una implementación completa, necesitarías botones interactivos
+        import random
+        opcion_elegida = random.randint(0, 2)  # Simula elección del jugador
+        responder_quiz(opcion_elegida)
+    
+    def mostrar_tip_sintoma(self, tipo_malware):
+        """Muestra un tip educativo cuando se detecta un síntoma por primera vez"""
+        if tipo_malware in self.sintomas_tip_mostrado:
+            return
+        
+        tip_data = self.gestor_mensajes.obtener_tip(tipo_malware)
+        msg = MensajeOverlay(
+            'tutor_tip',
+            tip_data['titulo'],
+            tip_data['bullets'],
+            tip_data['sabias_que'],
+            prioridad=60
+        )
+        
+        if self.overlay_educativo.agregar_mensaje(msg):
+            self.sintomas_tip_mostrado.add(tipo_malware)
+    
+    def mostrar_refuerzo_sintoma(self, tipo_malware):
+        """Muestra refuerzo educativo tras eliminar/aislar un malware"""
+        refuerzo_data = self.gestor_mensajes.obtener_refuerzo(tipo_malware)
+        msg = MensajeOverlay(
+            'tutor_refuerzo',
+            refuerzo_data['titulo'],
+            refuerzo_data['bullets'],
+            refuerzo_data['sabias_que'],
+            prioridad=80
+        )
+        self.overlay_educativo.agregar_mensaje(msg)
+    
+    def mostrar_error_educativo(self, tipo_error):
+        """Muestra mensaje educativo tras un error"""
+        error_data = self.gestor_mensajes.obtener_error(tipo_error)
+        msg = MensajeOverlay(
+            'tutor_error',
+            error_data['titulo'],
+            error_data['bullets'],
+            error_data.get('sabias_que', ''),
+            prioridad=70
+        )
+        self.overlay_educativo.agregar_mensaje(msg)
+
     def _completar_cuarentena(self):
         """Completa la acción de poner en cuarentena un archivo"""
         if self.archivo_seleccionado:
             self.archivo_seleccionado.en_cuarentena = True
 
             if self.archivo_seleccionado.es_infectado:
+                # INTEGRACIÓN: Registrar en Level2GameManager
+                self.level2_manager.file_quarantined(
+                    had_virus=True,
+                    symptom_type=self.archivo_seleccionado.tipo_virus
+                )
+                
+                # INTEGRACIÓN: Registrar en Excel
+                self.game.player_stats.mistake_log.add_mistake(
+                    level=2,
+                    mistake_type="archivo_infectado_detectado",
+                    description=f"Archivo {self.archivo_seleccionado.nombre} puesto en cuarentena (Virus: {self.archivo_seleccionado.tipo_virus})",
+                    mistake_details={
+                        "nombre_archivo": self.archivo_seleccionado.nombre,
+                        "tipo_virus": self.archivo_seleccionado.tipo_virus,
+                        "accion": "cuarentena"
+                    }
+                )
+                
                 self.show_message(f"CUARENTENA: {self.archivo_seleccionado.nombre} - Virus aislado")
                 # Programar desactivación de síntoma
                 pygame.time.set_timer(pygame.USEREVENT + 1, 20000)
+                
+                # SISTEMA EDUCATIVO: No mostrar refuerzo aquí (se mostrará cuando se apague el síntoma)
             else:
+                # INTEGRACIÓN: Registrar falso positivo
+                self.level2_manager.file_quarantined(had_virus=False)
+                
+                # INTEGRACIÓN: Registrar error en Excel
+                self.game.player_stats.mistake_log.add_mistake(
+                    level=2,
+                    mistake_type="archivo_limpio_cuarentena",
+                    description=f"Falso positivo: {self.archivo_seleccionado.nombre} era seguro pero fue puesto en cuarentena",
+                    mistake_details={
+                        "nombre_archivo": self.archivo_seleccionado.nombre,
+                        "accion": "cuarentena",
+                        "error": True
+                    }
+                )
+                
                 # Penalización por archivo seguro
                 self.recursos -= 5
                 self.mistakes_made += 1
+                # INTEGRACIÓN: Sincronizar ResourceBar del manager
+                self.level2_manager.resource_bar.consume(5)
                 self.show_message(f"ERROR: {self.archivo_seleccionado.nombre} era seguro! -5 recursos")
+                
+                # SISTEMA EDUCATIVO: Mostrar mensaje de error
+                self.mostrar_error_educativo('cuarentena_seguro')
 
     def _completar_limpieza(self):
         """Completa la acción de limpiar/eliminar un archivo"""
         if self.archivo_seleccionado:
             if self.archivo_seleccionado.es_infectado:
+                # INTEGRACIÓN: Registrar limpieza exitosa
+                self.level2_manager.file_cleaned(
+                    had_virus=True,
+                    symptom_type=self.archivo_seleccionado.tipo_virus
+                )
+                
                 # Éxito - eliminar virus
                 self.archivo_seleccionado.eliminado = True
                 self.viruses_cleaned += 1
@@ -2809,16 +3499,54 @@ class Level2Screen(Screen):
                 # Desactivar síntoma inmediatamente
                 if self.archivo_seleccionado.tipo_virus:
                     self.gestor_virus.desactivar_sintoma(self.archivo_seleccionado.tipo_virus)
+                    # INTEGRACIÓN: Resolver síntoma en el manager
+                    self.level2_manager.symptom_manager.deactivate_symptom(self.archivo_seleccionado.tipo_virus)
+                    
+                    # INTEGRACIÓN: Registrar resolución de síntoma en Excel
+                    self.game.player_stats.mistake_log.add_mistake(
+                        level=2,
+                        mistake_type="sintoma_resuelto",
+                        description=f"Virus {self.archivo_seleccionado.tipo_virus} eliminado de {self.archivo_seleccionado.nombre}",
+                        mistake_details={
+                            "nombre_archivo": self.archivo_seleccionado.nombre,
+                            "tipo_virus": self.archivo_seleccionado.tipo_virus,
+                            "accion": "limpiar"
+                        }
+                    )
 
                 self.show_message(
                     f"¡VIRUS ELIMINADO! {self.archivo_seleccionado.nombre} - {self.viruses_cleaned}/{self.total_viruses}")
+                    
+                # SISTEMA EDUCATIVO: Mostrar refuerzo educativo
+                self.mostrar_refuerzo_sintoma(self.archivo_seleccionado.tipo_virus)
 
             else:
+                # INTEGRACIÓN: Registrar error de limpieza
+                self.level2_manager.file_cleaned(had_virus=False)
+                
+                # INTEGRACIÓN: Registrar eliminación incorrecta en Excel
+                self.game.player_stats.mistake_log.add_mistake(
+                    level=2,
+                    mistake_type="archivo_limpio_eliminado",
+                    description=f"Error: {self.archivo_seleccionado.nombre} era un archivo limpio y fue eliminado",
+                    mistake_details={
+                        "nombre_archivo": self.archivo_seleccionado.nombre,
+                        "accion": "limpiar",
+                        "error": True
+                    }
+                )
+                
                 # Error - eliminar archivo seguro
-                self.recursos -= self.costos_acciones["limpiar_seguro"]
+                penalizacion = self.costos_acciones["limpiar_seguro"]
+                self.recursos -= penalizacion
                 self.mistakes_made += 1
+                # INTEGRACIÓN: Sincronizar ResourceBar del manager
+                self.level2_manager.resource_bar.consume(penalizacion)
                 self.show_message(
-                    f"ERROR: Eliminaste archivo seguro! -{self.costos_acciones['limpiar_seguro']} recursos")
+                    f"ERROR: Eliminaste archivo seguro! -{penalizacion} recursos")
+                    
+                # SISTEMA EDUCATIVO: Mostrar mensaje de error
+                self.mostrar_error_educativo('limpiar_seguro')
 
     def manejar_evento_cuarentena(self, event):
         """Maneja el evento de temporizador para desactivar síntomas"""
@@ -2829,6 +3557,9 @@ class Level2Screen(Screen):
                             self.gestor_virus.verificar_sintoma_por_archivo(archivo)):
                         self.gestor_virus.desactivar_sintoma(archivo.tipo_virus)
                         self.show_message(f"Síntoma desactivado: {archivo.tipo_virus}")
+                        
+                        # SISTEMA EDUCATIVO: Mostrar refuerzo al resolver síntoma vía cuarentena
+                        self.mostrar_refuerzo_sintoma(archivo.tipo_virus)
                         break
             pygame.time.set_timer(pygame.USEREVENT + 1, 0)
 
@@ -2870,6 +3601,10 @@ class Level2Screen(Screen):
         surf.blit(accion_text, (bar_x, bar_y - 25))
 
     def handle_event(self, event):
+        # SISTEMA EDUCATIVO: Dar prioridad a eventos del overlay
+        if self.overlay_educativo.handle_event(event):
+            return  # El overlay consumió el evento
+        
         if event.type == pygame.USEREVENT + 1:
             self.manejar_evento_cuarentena(event)
         
@@ -2924,10 +3659,8 @@ class Level2Screen(Screen):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.paused = not self.paused
-            elif self.state == "narrativa_inicial" and event.key == pygame.K_RETURN:
+            elif self.state == "tutor_inicial" and event.key == pygame.K_RETURN:
                 self.state = "jugando"
-            elif self.state == "fin_juego" and event.key == pygame.K_r:
-                self.__init__(self.game)
             # Interacciones de juego ahora son solo con mouse
 
         # CLICK IZQUIERDO
@@ -3002,11 +3735,55 @@ class Level2Screen(Screen):
                             return
 
     def update(self, dt):
-        if self.paused or self.state != "jugando":
+        if self.paused:
+            return
+        
+        # No actualizar el juego si estamos en el tutor
+        if self.state == "tutor_inicial":
+            return
+        
+        if self.state != "jugando":
             return
 
         self.actualizar_acciones(dt)
         self.game_time += dt
+        
+        # INTEGRACIÓN: Actualizar Level2GameManager
+        self.level2_manager.update(dt)
+        
+        # INTEGRACIÓN: Sincronizar recursos con el manager
+        self.recursos = max(0, int(self.level2_manager.resource_bar.current))
+        
+        # ANIMACIÓN: Suavizar el número de recursos mostrado
+        # Interpolar suavemente hacia el valor real
+        diferencia = self.recursos - self.recursos_display
+        velocidad_animacion = 3.0  # Velocidad de interpolación (mayor = más rápido)
+        self.recursos_display += diferencia * velocidad_animacion * (dt / 1000.0)
+        
+        # Si está muy cerca, snappear al valor exacto
+        if abs(diferencia) < 0.5:
+            self.recursos_display = float(self.recursos)
+        
+        # SISTEMA EDUCATIVO: Actualizar overlay (cooldowns)
+        self.overlay_educativo.update(dt)
+        
+        # SISTEMA EDUCATIVO: Mostrar tip cuando un síntoma se activa
+        for sintoma, activo in self.gestor_virus.sintomas_activos.items():
+            if activo and sintoma not in self.sintomas_tip_mostrado:
+                # Mapear síntoma a tipo de malware
+                tipo_malware = None
+                if sintoma == "pantalla_bloqueada":
+                    tipo_malware = "ransomware"
+                elif sintoma == "popups":
+                    tipo_malware = "adware"
+                elif sintoma == "ralentizacion":
+                    tipo_malware = "miner"
+                elif sintoma == "teclas_fantasma":
+                    tipo_malware = "spyware"
+                
+                if tipo_malware:
+                    self.mostrar_tip_sintoma(tipo_malware)
+                    self.sintomas_tip_mostrado.add(sintoma)
 
         # BLOQUEAR TODO SI ESTÁ EN TRANSICIÓN
         if self.in_transition:
@@ -3054,18 +3831,39 @@ class Level2Screen(Screen):
         self.show_message(f"Cambiando a {target_directory}...")
 
     def check_game_state(self):
-        if self.viruses_cleaned >= self.total_viruses:
-            self.victory_condition = True
-            self.game_over_reason = "¡Has limpiado todos los virus!"
-            self.state = "fin_juego"
-        elif self.recursos <= 0:
-            self.victory_condition = False
-            self.game_over_reason = "¡Te has quedado sin recursos!"
-            self.state = "fin_juego"
-        elif self.mistakes_made >= self.max_mistakes:
-            self.victory_condition = False
-            self.game_over_reason = "¡Has cometido demasiados errores!"
-            self.state = "fin_juego"
+        # INTEGRACIÓN: Usar los checkers del manager
+        if self.level2_manager.victory_checker.check_victory():
+            # INTEGRACIÓN: Guardar datos a Excel al ganar
+            self.game.player_stats.complete_level()
+            
+            # Cambiar a pantalla de video de victoria
+            mensaje = f"Virus eliminados: {self.viruses_cleaned}/{self.total_viruses}"
+            self.game.change_screen(VictoryVideoScreen(self.game, mensaje))
+            
+        elif self.level2_manager.defeat_checker.check_defeat():
+            # Determinar razón de derrota
+            razon = ""
+            if self.recursos <= 0:
+                razon = "¡Te has quedado sin recursos!"
+                
+                # INTEGRACIÓN: Registrar derrota por recursos
+                self.game.player_stats.mistake_log.add_mistake(
+                    level=2,
+                    mistake_type="recursos_agotados",
+                    description="Derrota: Se agotaron los recursos",
+                    mistake_details={"recursos_restantes": 0}
+                )
+                
+            elif self.mistakes_made >= self.max_mistakes:
+                razon = "¡Has cometido demasiados errores!"
+            else:
+                razon = "¡Derrota!"
+            
+            # INTEGRACIÓN: Guardar datos a Excel al perder también
+            self.game.player_stats.complete_level()
+            
+            # Cambiar a pantalla de video de derrota
+            self.game.change_screen(DefeatVideoScreen(self.game, razon))
 
     def show_message(self, message, duration=None):
         self.current_message = message
@@ -3083,9 +3881,49 @@ class Level2Screen(Screen):
             if pygame.time.get_ticks() % 1000 < 500:
                 surf.fill((30, 30, 60), special_flags=pygame.BLEND_RGB_ADD)
 
-        if self.state == "narrativa_inicial":
-            # Narrativa inicial (placeholder)
-            pass
+        if self.state == "tutor_inicial":
+            # Pantalla de bienvenida del tutor
+            surf.fill((10, 15, 25))
+            
+            # Cuadro central
+            box_width = 800
+            box_height = 550
+            box_x = (SCREEN_W - box_width) // 2
+            box_y = (SCREEN_H - box_height) // 2
+            box_rect = pygame.Rect(box_x, box_y, box_width, box_height)
+            
+            # Fondo del cuadro
+            pygame.draw.rect(surf, (20, 30, 50), box_rect, border_radius=15)
+            pygame.draw.rect(surf, (0, 200, 255), box_rect, 3, border_radius=15)
+            
+            # Título
+            titulo = self.fonts["title"].render("TUTOR DEL SISTEMA", True, (0, 255, 255))
+            surf.blit(titulo, (box_rect.centerx - titulo.get_width() // 2, box_y + 20))
+            
+            # Líneas del mensaje
+            y_offset = box_y + 70
+            for linea in self.tutor_mensaje:
+                if linea == "":
+                    y_offset += 15
+                    continue
+                
+                # Detectar si es título (tiene ":" al final)
+                if linea.startswith("¡") or linea.startswith("Tu misión") or linea.startswith("Herramientas"):
+                    color = (255, 255, 100)
+                    texto = self.fonts["normal"].render(linea, True, color)
+                elif linea.startswith("•") or linea.startswith("-"):
+                    color = (200, 200, 200)
+                    texto = self.fonts["small"].render(linea, True, color)
+                elif "ENTER" in linea:
+                    color = (0, 255, 0)
+                    texto = self.fonts["normal"].render(linea, True, color)
+                else:
+                    color = (220, 220, 220)
+                    texto = self.fonts["small"].render(linea, True, color)
+                
+                surf.blit(texto, (box_x + 40, y_offset))
+                y_offset += 22
+            
         elif self.state == "jugando":
             # Dibujar paneles
             for name, rect in self.hud_rects.items():
@@ -3102,6 +3940,29 @@ class Level2Screen(Screen):
                                                 resource_rect.height - 4)
             pygame.draw.rect(surf, self.hud_colors["resource"], current_resource_rect)
             pygame.draw.rect(surf, self.hud_colors["border"], resource_rect, 1)
+            
+            # NUEVO: Indicador numérico de recursos con animación
+            recursos_texto = f"{int(self.recursos_display)}/100"
+            
+            # Color del texto basado en cantidad de recursos
+            if self.recursos_display > 60:
+                color_texto = (255, 255, 255)  # Blanco
+            elif self.recursos_display > 30:
+                color_texto = (255, 255, 0)    # Amarillo (advertencia)
+            else:
+                color_texto = (255, 100, 100)  # Rojo (peligro)
+            
+            # Renderizar texto con sombra para mejor visibilidad
+            texto_recursos = self.fonts["normal"].render(recursos_texto, True, color_texto)
+            texto_shadow = self.fonts["normal"].render(recursos_texto, True, (0, 0, 0))
+            
+            # Posicionar en el centro de la barra
+            texto_x = resource_rect.centerx - texto_recursos.get_width() // 2
+            texto_y = resource_rect.centery - texto_recursos.get_height() // 2
+            
+            # Dibujar sombra y texto
+            surf.blit(texto_shadow, (texto_x + 1, texto_y + 1))
+            surf.blit(texto_recursos, (texto_x, texto_y))
 
             # Síntomas globales
             self.dibujar_sintomas_globales(surf)
@@ -3338,28 +4199,6 @@ class Level2Screen(Screen):
                 overlay.set_alpha(alpha)
                 surf.blit(overlay, (0, 0))
 
-        elif self.state == "fin_juego":
-            fin_box = pygame.Rect(200, 200, 400, 200)
-            pygame.draw.rect(surf, (20, 20, 40), fin_box, border_radius=10)
-            pygame.draw.rect(surf, (100, 100, 200), fin_box, 2, border_radius=10)
-
-            mensaje = self.game_over_reason
-            if self.victory_condition:
-                mensaje += f"\nVirus eliminados: {self.viruses_cleaned}/{self.total_viruses}"
-            else:
-                mensaje += f"\nRecursos restantes: {self.recursos}"
-
-            lineas = mensaje.split('\n')
-            y_offset = fin_box.centery - (len(lineas) * 20) // 2
-
-            for linea in lineas:
-                texto = self.fonts["normal"].render(linea, True, (255, 255, 255))
-                surf.blit(texto, (fin_box.centerx - texto.get_width() // 2, y_offset))
-                y_offset += 25
-
-            continuar_text = self.fonts["small"].render("Presiona R para reiniciar", True, (200, 200, 200))
-            surf.blit(continuar_text, (fin_box.centerx - continuar_text.get_width() // 2, fin_box.bottom - 30))
-
         if self.paused:
             overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 150))
@@ -3367,6 +4206,9 @@ class Level2Screen(Screen):
             pausa_text = self.fonts["title"].render("PAUSA", True, (255, 255, 255))
             surf.blit(pausa_text,
                       (SCREEN_W // 2 - pausa_text.get_width() // 2, SCREEN_H // 2 - pausa_text.get_height() // 2))
+        
+        # SISTEMA EDUCATIVO: Renderizar overlay educativo al final (sobre todo)
+        self.overlay_educativo.render(surf)
 
             # --------- Clase principal del juego ----------
 class Game:
@@ -3375,7 +4217,12 @@ class Game:
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         pygame.display.set_caption("NetDefenders")
         self.clock = pygame.time.Clock()
-        self.current = IntroVideoScreen(self, "intro.mp4")
+        
+        # Obtener la ruta del directorio del script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        video_path = os.path.join(script_dir, "intro.mp4")
+        
+        self.current = IntroVideoScreen(self, video_path)
         self.running = True
         # NUEVO: Sistema de estadísticas del jugador
         self.player_stats = PlayerStats("Jugador1")
@@ -3387,7 +4234,7 @@ class Game:
             "Nivel 3": False,
         }
         # Ruta a la fuente TTF del proyecto (archivo 'texto.ttf' en la raíz del proyecto)
-        self.font_path = "texto.ttf"
+        self.font_path = os.path.join(script_dir, "texto.ttf")
         try:
             self.font = pygame.font.Font(self.font_path, 18)
         except Exception:

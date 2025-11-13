@@ -465,3 +465,380 @@ class PlayerStats:
             "threats_missed": 0,
             "false_positives": 0
         }
+
+
+# ========== SISTEMA DE NIVEL 2: RECURSOS Y LIMPIEZA DE PC ==========
+
+class ResourceBar:
+    """
+    Gestiona la barra de recursos del jugador en Nivel 2.
+    Los recursos disminuyen con acciones y síntomas activos.
+    """
+    def __init__(self, initial_resources=100, max_resources=100):
+        self.current = initial_resources
+        self.max = max_resources
+        self.passive_drain_rate = 0  # recursos/segundo por síntomas
+        
+    def consume(self, amount):
+        """Consume recursos por una acción"""
+        self.current = max(0, self.current - amount)
+        return self.current > 0
+    
+    def passive_drain(self, dt):
+        """Drenaje pasivo por síntomas activos (dt en milisegundos)"""
+        if self.passive_drain_rate > 0:
+            drain = (self.passive_drain_rate * dt) / 1000.0
+            self.current = max(0, self.current - drain)
+    
+    def restore(self, amount):
+        """Restaura recursos (por bonus o logros)"""
+        self.current = min(self.max, self.current + amount)
+    
+    def set_drain_rate(self, rate):
+        """Establece la tasa de drenaje pasivo"""
+        self.passive_drain_rate = max(0, rate)
+    
+    def is_depleted(self):
+        """Verifica si los recursos se agotaron"""
+        return self.current <= 0
+    
+    def get_percentage(self):
+        """Retorna el porcentaje de recursos restantes"""
+        return (self.current / self.max) * 100 if self.max > 0 else 0
+
+
+class Symptom:
+    """
+    Representa un síntoma visible causado por un virus.
+    """
+    def __init__(self, symptom_type, severity, resource_drain):
+        self.type = symptom_type  # "ralentizacion", "popups", "pantalla_bloqueada", "teclas_fantasma"
+        self.severity = severity  # 1-10
+        self.resource_drain = resource_drain  # recursos/segundo
+        self.active = False
+        self.source_file = None  # referencia al archivo que lo causa
+        
+    def activate(self, source_file=None):
+        """Activa el síntoma"""
+        self.active = True
+        self.source_file = source_file
+    
+    def deactivate(self):
+        """Desactiva el síntoma"""
+        self.active = False
+        self.source_file = None
+
+
+class SymptomManager:
+    """
+    Gestiona todos los síntomas activos y su impacto.
+    """
+    def __init__(self):
+        self.symptoms = {
+            "ralentizacion": Symptom("ralentizacion", 6, 2.0),
+            "popups": Symptom("popups", 5, 1.5),
+            "pantalla_bloqueada": Symptom("pantalla_bloqueada", 10, 5.0),
+            "teclas_fantasma": Symptom("teclas_fantasma", 4, 1.0)
+        }
+    
+    def activate_symptom(self, symptom_type, source_file=None):
+        """Activa un síntoma"""
+        if symptom_type in self.symptoms:
+            self.symptoms[symptom_type].activate(source_file)
+            return True
+        return False
+    
+    def deactivate_symptom(self, symptom_type):
+        """Desactiva un síntoma"""
+        if symptom_type in self.symptoms:
+            self.symptoms[symptom_type].deactivate()
+            return True
+        return False
+    
+    def get_total_drain(self):
+        """Calcula el drenaje total de recursos por síntomas activos"""
+        total = 0
+        for symptom in self.symptoms.values():
+            if symptom.active:
+                total += symptom.resource_drain
+        return total
+    
+    def get_active_symptoms(self):
+        """Retorna lista de síntomas activos"""
+        return [s for s in self.symptoms.values() if s.active]
+    
+    def has_active_symptoms(self):
+        """Verifica si hay síntomas activos"""
+        return any(s.active for s in self.symptoms.values())
+
+
+class ActionTimer:
+    """
+    Temporizador para acciones con duración (escaneo, limpieza, etc.)
+    """
+    def __init__(self, action_name, duration, cost):
+        self.action_name = action_name
+        self.duration = duration  # milisegundos
+        self.cost = cost  # costo en recursos
+        self.elapsed = 0
+        self.in_progress = False
+        self.completed = False
+        
+    def start(self):
+        """Inicia el temporizador"""
+        self.in_progress = True
+        self.elapsed = 0
+        self.completed = False
+    
+    def update(self, dt):
+        """Actualiza el temporizador"""
+        if self.in_progress:
+            self.elapsed += dt
+            if self.elapsed >= self.duration:
+                self.in_progress = False
+                self.completed = True
+                return True
+        return False
+    
+    def reset(self):
+        """Reinicia el temporizador"""
+        self.elapsed = 0
+        self.in_progress = False
+        self.completed = False
+    
+    def get_progress(self):
+        """Retorna el progreso de la acción (0-1)"""
+        if self.duration <= 0:
+            return 1.0
+        return min(1.0, self.elapsed / self.duration)
+
+
+class ActionTimerFactory:
+    """
+    Factory para crear temporizadores de acciones con configuración balanceada
+    """
+    ACTION_CONFIGS = {
+        "inspeccionar": {"duration": 500, "cost": 0},
+        "escanear_archivo": {"duration": 3000, "cost": 10},
+        "escanear_carpeta": {"duration": 5000, "cost": 15},
+        "cuarentena": {"duration": 2000, "cost": 8},
+        "limpiar_malware": {"duration": 4000, "cost": 0},
+        "limpiar_seguro": {"duration": 1500, "cost": 12}
+    }
+    
+    @classmethod
+    def create(cls, action_name):
+        """Crea un temporizador para la acción especificada"""
+        config = cls.ACTION_CONFIGS.get(action_name, {"duration": 1000, "cost": 5})
+        return ActionTimer(action_name, config["duration"], config["cost"])
+
+
+class VictoryConditionChecker:
+    """
+    Verifica las condiciones de victoria del Nivel 2
+    """
+    def __init__(self):
+        self.total_threats = 0
+        self.threats_eliminated = 0
+        self.threats_quarantined = 0
+        
+    def set_total_threats(self, count):
+        """Establece el total de amenazas en el nivel"""
+        self.total_threats = count
+    
+    def register_elimination(self):
+        """Registra una amenaza eliminada"""
+        self.threats_eliminated += 1
+    
+    def register_quarantine(self):
+        """Registra una amenaza en cuarentena"""
+        self.threats_quarantined += 1
+    
+    def check_victory(self):
+        """Verifica si se cumplieron las condiciones de victoria"""
+        total_handled = self.threats_eliminated + self.threats_quarantined
+        return total_handled >= self.total_threats and self.total_threats > 0
+    
+    def get_completion_percentage(self):
+        """Retorna el porcentaje de amenazas manejadas"""
+        if self.total_threats == 0:
+            return 0
+        total_handled = self.threats_eliminated + self.threats_quarantined
+        return (total_handled / self.total_threats) * 100
+
+
+class DefeatConditionChecker:
+    """
+    Verifica las condiciones de derrota del Nivel 2
+    """
+    def __init__(self, resource_bar):
+        self.resource_bar = resource_bar
+        self.critical_threshold = 10  # recursos críticos
+        
+    def check_defeat(self):
+        """Verifica si se cumplió la condición de derrota"""
+        return self.resource_bar.is_depleted()
+    
+    def is_critical(self):
+        """Verifica si los recursos están en nivel crítico"""
+        return self.resource_bar.current <= self.critical_threshold
+
+
+class QuizBonusSystem:
+    """
+    Sistema de bonus por completar el quiz final
+    """
+    def __init__(self):
+        self.quiz_completed = False
+        self.correct_answers = 0
+        self.total_questions = 0
+        self.bonus_points = 0
+        
+    def complete_quiz(self, correct, total):
+        """Registra los resultados del quiz"""
+        self.quiz_completed = True
+        self.correct_answers = correct
+        self.total_questions = total
+        self.bonus_points = self._calculate_bonus()
+    
+    def _calculate_bonus(self):
+        """Calcula los puntos de bonus según el rendimiento"""
+        if self.total_questions == 0:
+            return 0
+        
+        percentage = (self.correct_answers / self.total_questions) * 100
+        
+        if percentage >= 90:
+            return 500  # Excelente
+        elif percentage >= 70:
+            return 300  # Bueno
+        elif percentage >= 50:
+            return 150  # Regular
+        else:
+            return 50   # Bajo
+    
+    def get_bonus(self):
+        """Retorna los puntos de bonus"""
+        return self.bonus_points
+
+
+class Level2GameManager:
+    """
+    Gestiona el flujo completo del Nivel 2: recursos, síntomas, victoria/derrota
+    """
+    def __init__(self, total_threats=0):
+        self.resource_bar = ResourceBar(initial_resources=100, max_resources=100)
+        self.symptom_manager = SymptomManager()
+        self.victory_checker = VictoryConditionChecker()
+        self.defeat_checker = DefeatConditionChecker(self.resource_bar)
+        self.quiz_bonus = QuizBonusSystem()
+        self.score_manager = ScoreManager(level_number=2)
+        
+        self.game_state = "playing"  # "playing", "victory", "defeat"
+        self.start_time = time.time()
+        
+        if total_threats > 0:
+            self.victory_checker.set_total_threats(total_threats)
+    
+    def update(self, dt):
+        """Actualiza el estado del juego (dt en milisegundos)"""
+        if self.game_state != "playing":
+            return
+        
+        # Aplicar drenaje pasivo de síntomas
+        total_drain = self.symptom_manager.get_total_drain()
+        self.resource_bar.set_drain_rate(total_drain)
+        self.resource_bar.passive_drain(dt)
+        
+        # Verificar condiciones de derrota
+        if self.defeat_checker.check_defeat():
+            self.game_state = "defeat"
+            return
+        
+        # Verificar condiciones de victoria
+        if self.victory_checker.check_victory():
+            self.game_state = "victory"
+            self._apply_victory_bonus()
+    
+    def execute_action(self, action_name):
+        """Ejecuta una acción y consume recursos"""
+        timer = ActionTimerFactory.create(action_name)
+        
+        # Verificar si hay recursos suficientes
+        if not self.resource_bar.consume(timer.cost):
+            return None  # No hay recursos suficientes
+        
+        return timer
+    
+    def file_cleaned(self, had_virus, symptom_type=None):
+        """Registra que un archivo fue limpiado"""
+        if had_virus:
+            self.victory_checker.register_elimination()
+            self.score_manager.add_points(100, with_combo=True)
+            
+            # Desactivar síntoma asociado
+            if symptom_type:
+                self.symptom_manager.deactivate_symptom(symptom_type)
+        else:
+            # Penalización por limpiar archivo seguro
+            self.score_manager.subtract_points(50)
+    
+    def file_quarantined(self, had_virus, symptom_type=None):
+        """Registra que un archivo fue puesto en cuarentena"""
+        if had_virus:
+            self.victory_checker.register_quarantine()
+            self.score_manager.add_points(80, with_combo=True)
+            
+            # Desactivar síntoma asociado
+            if symptom_type:
+                self.symptom_manager.deactivate_symptom(symptom_type)
+        else:
+            # Penalización menor por cuarentena innecesaria
+            self.score_manager.subtract_points(30)
+    
+    def file_scanned(self, is_infected):
+        """Registra que un archivo fue escaneado"""
+        if is_infected:
+            self.score_manager.add_points(20, with_combo=False)
+    
+    def activate_virus_symptom(self, symptom_type, source_file=None):
+        """Activa un síntoma de virus"""
+        self.symptom_manager.activate_symptom(symptom_type, source_file)
+    
+    def complete_quiz(self, correct, total):
+        """Completa el quiz y aplica bonus"""
+        self.quiz_bonus.complete_quiz(correct, total)
+        bonus = self.quiz_bonus.get_bonus()
+        self.score_manager.add_points(bonus, with_combo=False)
+    
+    def _apply_victory_bonus(self):
+        """Aplica bonus por victoria"""
+        # Bonus por recursos restantes
+        resource_bonus = int(self.resource_bar.current * 5)
+        self.score_manager.add_points(resource_bonus, with_combo=False)
+        
+        # Bonus por tiempo
+        elapsed = time.time() - self.start_time
+        if elapsed < 300:  # Menos de 5 minutos
+            time_bonus = 500
+        elif elapsed < 600:  # Menos de 10 minutos
+            time_bonus = 300
+        else:
+            time_bonus = 100
+        
+        self.score_manager.add_points(time_bonus, with_combo=False)
+    
+    def get_game_stats(self):
+        """Retorna estadísticas del juego"""
+        return {
+            "state": self.game_state,
+            "resources": self.resource_bar.current,
+            "resources_percentage": self.resource_bar.get_percentage(),
+            "score": self.score_manager.current_score,
+            "threats_handled": self.victory_checker.threats_eliminated + self.victory_checker.threats_quarantined,
+            "total_threats": self.victory_checker.total_threats,
+            "completion": self.victory_checker.get_completion_percentage(),
+            "active_symptoms": len(self.symptom_manager.get_active_symptoms()),
+            "is_critical": self.defeat_checker.is_critical(),
+            "elapsed_time": time.time() - self.start_time
+        }
