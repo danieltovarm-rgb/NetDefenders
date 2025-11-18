@@ -473,6 +473,251 @@ class GlitchTransitionScreen(Screen):
         self._noise.set_alpha(self._rng.randint(40, 120))
         surf.blit(self._noise, (0, 0), special_flags=pygame.BLEND_ADD)
 
+# ================= PRE / POST QUIZ SISTEMA =================
+# Banco de 12 preguntas (6 phishing Nivel1 / 6 malware Nivel2)
+QUIZ_QA_LEVEL12 = [
+    {"pregunta": "¿Qué indica una URL acortada sospechosa en un correo?", "opciones": ["Es siempre segura", "Puede ocultar destino malicioso", "Optimiza velocidad", "Es corporativa por defecto"], "correcta": 1, "categoria": "level1"},
+    {"pregunta": "Señal clara de phishing en el cuerpo del mensaje:", "opciones": ["Errores gramaticales y urgencia", "Saludo personalizado correcto", "Firma corporativa completa", "Tono profesional"], "correcta": 0, "categoria": "level1"},
+    {"pregunta": "Dominio legítimo típico para empresa sería:", "opciones": ["login-seguro-empresa.com", "empresa-support.secure.com", "empresa.com", "empresa-helpdesk.net"], "correcta": 2, "categoria": "level1"},
+    {"pregunta": "Acción correcta ante un correo que pide credenciales urgente:", "opciones": ["Responder inmediatamente", "Revisar dominio y reportar si sospechoso", "Ignorar siempre", " reenviar a todos"], "correcta": 1, "categoria": "level1"},
+    {"pregunta": "Un phishing busca principalmente:", "opciones": ["Mejorar rendimiento", "Robar información/credenciales", "Actualizar software", "Liberar espacio"], "correcta": 1, "categoria": "level1"},
+    {"pregunta": "Adjunto inesperado .exe en correo interno:", "opciones": ["Sospechoso, posible amenaza", "Seguridad total", "Formato estándar", "Listo para instalar"], "correcta": 0, "categoria": "level1"},
+    {"pregunta": "Ransomware se caracteriza por:", "opciones": ["Mostrar anuncios", "Cifrar archivos y pedir rescate", "Registrar teclas", "Optimizar Internet"], "correcta": 1, "categoria": "level2"},
+    {"pregunta": "Adware provoca principalmente:", "opciones": ["Popups y publicidad invasiva", "Cifrado de discos", "Drenaje extremo de CPU (minería)", "Apagados repentinos"], "correcta": 0, "categoria": "level2"},
+    {"pregunta": "Miner (cryptominer) en el sistema causa:", "opciones": ["Bloqueo de pantalla", "Uso alto de CPU/GPU", "Captura de pantalla", "Fallo de red"], "correcta": 1, "categoria": "level2"},
+    {"pregunta": "Spyware busca:", "opciones": ["Registrar teclas y exfiltrar datos", "Mostrar solo anuncios", "Cifrar archivos", "Desfragmentar el disco"], "correcta": 0, "categoria": "level2"},
+    {"pregunta": "Medida segura al detectar archivo sospechoso infectado:", "opciones": ["Ejecutarlo para verificar", "Poner en cuarentena o limpiar", "Ignorarlo", "Compartir por correo"], "correcta": 1, "categoria": "level2"},
+    {"pregunta": "Primera acción para analizar carpeta ante síntomas:", "opciones": ["Escanear para evaluar riesgos", "Eliminar todo inmediatamente", "Compartir los archivos", "Renombrar los archivos"], "correcta": 0, "categoria": "level2"}
+]
+
+class PreQuizContextScreen(Screen):
+    """Pantalla que explica al jugador el propósito del test inicial."""
+    def __init__(self, game):
+        super().__init__(game)
+        try:
+            self.title_font = pygame.font.Font(self.game.font_path, 48)
+            self.body_font = pygame.font.Font(self.game.font_path, 24)
+        except Exception:
+            self.title_font = pygame.font.SysFont("Consolas", 36)
+            self.body_font = pygame.font.SysFont("Consolas", 20)
+        self.bg_color = (10, 10, 30)
+        self.text_color = (0, 255, 200)
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+            # Ir al quiz pre
+            from_screen = QuizScreen(self.game, mode='pre', next_screen=LevelSelectScreen(self.game))
+            self.game.change_screen(from_screen)
+
+    def update(self, dt):
+        pass
+
+    def render(self, surf):
+        surf.fill(self.bg_color)
+        title = self.title_font.render("Evaluación Inicial", True, self.text_color)
+        surf.blit(title, (SCREEN_W//2 - title.get_width()//2, 100))
+        
+        lines = [
+            "Antes de comenzar, responde 12 preguntas",
+            "sobre phishing y malware.",
+            "",
+            "Al finalizar el juego, repetirás el test",
+            "para medir tu mejora.",
+            "",
+            "Presiona cualquier tecla para comenzar..."
+        ]
+        y_offset = 220
+        for line in lines:
+            txt = self.body_font.render(line, True, (200, 200, 200))
+            surf.blit(txt, (SCREEN_W//2 - txt.get_width()//2, y_offset))
+            y_offset += 40
+
+class QuizScreen(Screen):
+    """Pantalla para pre/post quiz. Usa QUIZ_QA_LEVEL12.
+    mode: 'pre' | 'post'
+    next_screen: pantalla a la que se transiciona tras finalizar.
+    """
+    def __init__(self, game, mode='pre', next_screen=None):
+        super().__init__(game)
+        self.mode = mode
+        self.next_screen = next_screen
+        self.questions = QUIZ_QA_LEVEL12.copy()
+        self.current_idx = 0
+        self.answers = []  # lista de bools (True=correcto, False=incorrecto)
+        self.selected = None
+        self.show_feedback = False
+        self.feedback_timer = 0
+        try:
+            self.title_font = pygame.font.Font(self.game.font_path, 40)
+            self.q_font = pygame.font.Font(self.game.font_path, 24)
+            self.opt_font = pygame.font.Font(self.game.font_path, 20)
+        except Exception:
+            self.title_font = pygame.font.SysFont("Consolas", 32)
+            self.q_font = pygame.font.SysFont("Consolas", 22)
+            self.opt_font = pygame.font.SysFont("Consolas", 18)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            if self.show_feedback:
+                # Avanzar
+                next_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H - 80, 200, 50)
+                if next_rect.collidepoint(mx, my):
+                    self.advance()
+            else:
+                # Seleccionar opción (4 botones)
+                for i in range(4):
+                    rect = pygame.Rect(100, 280 + i*70, SCREEN_W - 200, 60)
+                    if rect.collidepoint(mx, my):
+                        self.select_option(i)
+                        break
+
+    def select_option(self, idx):
+        """Registra la opción seleccionada y muestra feedback"""
+        self.selected = idx
+        q = self.questions[self.current_idx]
+        correct = (idx == q["correcta"])
+        self.answers.append(correct)
+        self.show_feedback = True
+        self.feedback_timer = 0
+
+    def advance(self):
+        """Avanza a la siguiente pregunta o finaliza"""
+        self.current_idx += 1
+        if self.current_idx >= len(self.questions):
+            self.finish_quiz()
+        else:
+            self.selected = None
+            self.show_feedback = False
+
+    def finish_quiz(self):
+        """Termina el quiz, registra puntajes y transiciona"""
+        total_correct = sum(1 for a in self.answers if a)
+        # Calcular por categoría
+        lvl1_correct = 0
+        lvl2_correct = 0
+        for i, ans in enumerate(self.answers):
+            if ans:
+                cat = self.questions[i]["categoria"]
+                if cat == "level1":
+                    lvl1_correct += 1
+                elif cat == "level2":
+                    lvl2_correct += 1
+        cat_breakdown = {"level1": lvl1_correct, "level2": lvl2_correct}
+        self.game.player_stats.record_quiz_score(self.mode, total_correct, cat_breakdown)
+        
+        # Transicionar
+        if self.mode == 'pre':
+            self.game.change_screen(self.next_screen or LevelSelectScreen(self.game))
+        else:
+            # post/final: mostrar resumen
+            self.game.change_screen(FinalQuizSummaryScreen(self.game, self.next_screen or MenuScreen(self.game)))
+
+    def update(self, dt):
+        pass
+
+    def render(self, surf):
+        surf.fill((10, 10, 30))
+        
+        # Verificar si el quiz ya terminó (evita index out of range)
+        if self.current_idx >= len(self.questions):
+            # Mostrar pantalla de carga mientras transiciona
+            loading_txt = self.title_font.render("Procesando resultados...", True, (0, 255, 200))
+            surf.blit(loading_txt, (SCREEN_W//2 - loading_txt.get_width()//2, SCREEN_H//2))
+            return
+        
+        # Título
+        title_txt = "QUIZ INICIAL" if self.mode == 'pre' else "QUIZ FINAL"
+        title = self.title_font.render(title_txt, True, (0, 255, 200))
+        surf.blit(title, (SCREEN_W//2 - title.get_width()//2, 30))
+        
+        # Progreso
+        prog_txt = f"Pregunta {self.current_idx+1}/{len(self.questions)}"
+        prog = self.opt_font.render(prog_txt, True, (200, 200, 200))
+        surf.blit(prog, (SCREEN_W//2 - prog.get_width()//2, 90))
+        
+        # Pregunta
+        q = self.questions[self.current_idx]
+        q_lines = wrap_ellipsis(q["pregunta"], self.q_font, SCREEN_W - 120, None)
+        y_offset = 150
+        for line in q_lines:
+            ln_surf = self.q_font.render(line, True, (255, 255, 255))
+            surf.blit(ln_surf, (60, y_offset))
+            y_offset += self.q_font.get_height() + 5
+        
+        # Opciones (4 botones)
+        mx, my = pygame.mouse.get_pos()
+        for i in range(4):
+            rect = pygame.Rect(100, 280 + i*70, SCREEN_W - 200, 60)
+            if self.show_feedback:
+                if i == q["correcta"]:
+                    color = (50, 200, 50)
+                elif i == self.selected and i != q["correcta"]:
+                    color = (200, 50, 50)
+                else:
+                    color = (80, 80, 120)
+            else:
+                color = (150, 150, 200) if rect.collidepoint(mx, my) else (100, 100, 150)
+            pygame.draw.rect(surf, color, rect, border_radius=8)
+            opt_lines = wrap_ellipsis(f"{chr(65+i)}. {q['opciones'][i]}", self.opt_font, rect.width - 20, rect.height - 10)
+            yo = rect.y + 10
+            for ol in opt_lines:
+                ol_surf = self.opt_font.render(ol, True, (255, 255, 255))
+                surf.blit(ol_surf, (rect.x + 10, yo))
+                yo += self.opt_font.get_height() + 2
+        
+        # Botón siguiente (solo si show_feedback)
+        if self.show_feedback:
+            next_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H - 80, 200, 50)
+            pygame.draw.rect(surf, (100, 100, 150), next_rect, border_radius=8)
+            next_txt = self.opt_font.render("SIGUIENTE", True, (255, 255, 255))
+            surf.blit(next_txt, (next_rect.centerx - next_txt.get_width()//2, next_rect.centery - next_txt.get_height()//2))
+
+class FinalQuizSummaryScreen(Screen):
+    """Resumen de mejora tras quiz final."""
+    def __init__(self, game, next_screen):
+        super().__init__(game)
+        self.next_screen = next_screen
+        try:
+            self.title_font = pygame.font.Font(self.game.font_path, 44)
+            self.body_font = pygame.font.Font(self.game.font_path, 22)
+        except Exception:
+            self.title_font = pygame.font.SysFont("Consolas", 36)
+            self.body_font = pygame.font.SysFont("Consolas", 20)
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+            self.game.change_screen(self.next_screen)
+
+    def update(self, dt):
+        pass
+
+    def render(self, surf):
+        surf.fill((10, 10, 30))
+        summary = self.game.player_stats.get_quiz_summary()
+        
+        title = self.title_font.render("RESUMEN DE MEJORA", True, (0, 255, 200))
+        surf.blit(title, (SCREEN_W//2 - title.get_width()//2, 50))
+        
+        lines = [
+            f"Quiz Inicial: {summary['pre_total']}/12",
+            f"Quiz Final: {summary['post_total']}/12",
+            "",
+            f"Mejora: {summary['mejora_pct']:.1f}%",
+            "",
+            f"Phishing (Nivel 1): {summary['pre_lvl1']}/6 → {summary['post_lvl1']}/6",
+            f"Malware (Nivel 2): {summary['pre_lvl2']}/6 → {summary['post_lvl2']}/6",
+            "",
+            "¡Gracias por jugar NetDefenders!",
+            "",
+            "Presiona cualquier tecla para continuar..."
+        ]
+        y_offset = 180
+        for line in lines:
+            txt = self.body_font.render(line, True, (200, 200, 200))
+            surf.blit(txt, (SCREEN_W//2 - txt.get_width()//2, y_offset))
+            y_offset += 35
+
 # --------- (NUEVA) BaseLevelScreen con elementos esenciales ----------
 class BaseLevelScreen(Screen):
     def __init__(self, game, narrative_lines):
@@ -863,7 +1108,8 @@ class MenuScreen(Screen):
                 if rect.collidepoint(mx, my):
                     anim["scale"] = anim.get("press_scale", 0.95)  # click tap animation
                     if opt == "JUGAR":
-                        self.game.change_screen(LevelSelectScreen(self.game))
+                        # Ir al contexto del quiz inicial
+                        self.game.change_screen(PreQuizContextScreen(self.game))
                     elif opt == "SALIR":
                         pygame.quit();
                         sys.exit()
@@ -1006,9 +1252,9 @@ class Level1Screen(BaseLevelScreen):
             Correo(
                 es_legitimo=False,
                 tipo_malicioso="contraseñas",
-                remitente="soporte@microsft-office.com",
+                remitente="microsoft-support@outlook.com",
                 asunto="ALERTA DE SEGURIDAD: Su contraseña ha caducado",
-                contenido="Estimado usuario,\n\nDetectamos un inicio de sesión inusual en su cuenta de Microsoft desde una ubicación no reconocida. Como medida de precaución, hemos caducado su contraseña.\n\nPara evitar la pérdida de acceso permanente a sus archivos de OneDrive y Outlook, debe verificar su cuenta inmediatamente.\n\nHaga clic en el siguiente enlace para actualizar su contraseña:\n[Enlace a portal falso]\n\nSi no completa esta acción en las próximas 2 horas, su cuenta será suspendida de forma permanente según nuestros términos de servicio. Apreciamos su cooperación.\n\nGracias,\nEquipo de Soporte de Microsoft",
+                contenido="Estimado usuario,\n\nDetectamos un inicio de sesión inusual en su cuenta de Microsoft desde una ubicación no reconocida. Como medida de precaución, hemos caducado su contraseña.\n\nPara evitar la pérdida de acceso permanente a sus archivos de OneDrive y Outlook, debe verificar su cuenta inmediatamente.\n\nHaga clic en el siguiente enlace para actualizar su contraseña:\nhttps://microsoft-update-auth.portal-checker.info/restore\n\nSi no completa esta acción en las próximas 2 horas, su cuenta será suspendida de forma permanente según nuestros términos de servicio. Apreciamos su cooperación.\n\nGracias,\nEquipo de Soporte de Microsoft",
                 razones_correctas=["Dominio", "Texto"],
                 logo_path=get_asset_path("assets/logos/microsoft.png"), # Usa el logo real para confundir
                 inbox_icon_path=get_asset_path("assets/logos/microsoft_inbox.png"),
@@ -1026,14 +1272,14 @@ class Level1Screen(BaseLevelScreen):
                 inbox_icon_path=get_asset_path("assets/logos/synergy_corp_rh_inbox.png"),
             ),
 
-            # MALICIOSO 2 (Falla: Logo y Texto)
+            # MALICIOSO 2 (Falla: Logo, Dominio y Texto)
             Correo(
                 es_legitimo=False,
                 tipo_malicioso="dinero",
                 remitente="notificaciones@ganadores-lotto.net",
                 asunto="¡Felicidades! Ha ganado $500,000",
                 contenido="¡Es su día de suerte! ¡Ha ganado la Lotería Internacional!\n\nSu dirección de correo electrónico fue seleccionada al azar de una base de datos global como el ganador de nuestro sorteo mensual. ¡Ha ganado $500,000 USD!\n\nPara reclamar su premio, solo debe cubrir una pequeña 'tasa de procesamiento y transferencia bancaria internacional' de $20. Este pago es requerido por las regulaciones financieras.\n\nHaga clic aquí para pagar la tasa y recibir su premio. La oferta caduca en 24 horas.\n\n¡Felicidades de nuevo!",
-                razones_correctas=["Logo", "Texto"],
+                razones_correctas=["Logo", "Texto", "Dominio"],
                 logo_path=get_asset_path("assets/logos/loteria_falsa.png"), # Un logo que se vea poco profesional
                 inbox_icon_path=get_asset_path("assets/logos/loteria_falsa_inbox.png"),
             ),
@@ -1054,7 +1300,7 @@ class Level1Screen(BaseLevelScreen):
             Correo(
                 es_legitimo=False,
                 tipo_malicioso="contraseñas",
-                remitente="it-soporte@synergy-corp.com",
+                remitente="it-soporte@it.synergy-corp.com",
                 asunto="[ACCIÓN REQUERIDA] Migración de buzón de correo",
                 contenido="Hola empleado,\n\nDebido a una actualización crítica de seguridad, estamos migrando todos los buzones al nuevo servidor en la nube (Exchange vNext) esta noche a las 2:00 AM.\n\nPara asegurar que sus correos, contactos y calendario se sincronicen correctamente, necesitamos que valide sus credenciales en el portal de migración ANTES de esa hora.\n\nPor favor, inicie sesión en el portal de migración con su correo y contraseña habituales:\n[Enlace a portal de phishing]\n\nSi no completa esta validación, su buzón podría corromperse y perdería sus datos. Entendemos que esto es urgente, pero es necesario para proteger la red.\n\nGracias,\nDepartamento de IT.",
                 razones_correctas=["Texto"],
@@ -1330,7 +1576,14 @@ class Level1Screen(BaseLevelScreen):
             # Desbloquear Nivel 2 si ganó el jugador
             if self._player_won():
                 self.game.unlocked_levels["Nivel 2"] = True
-            self.game.change_screen(MenuScreen(self.game))
+                # Verificar si ambos niveles (1 y 2) están completos para quiz final
+                completed = self.game.player_stats.completed_levels
+                if len(completed) >= 2:
+                    # Ir al quiz final
+                    self.game.change_screen(QuizScreen(self.game, mode='post', next_screen=MenuScreen(self.game)))
+                    return
+            # Si no hay quiz final, volver al selector de niveles
+            self.game.change_screen(LevelSelectScreen(self.game))
             return
 
         if self.estado == "esperando_correo":
@@ -1600,12 +1853,12 @@ class ImageButton:
                 except Exception:
                     continue
 
-    def draw(self, surf):
+    def draw(self, surf, enable_hover=True):
         if self.images:
             surf.blit(self.images[0], self.rect.topleft)
         else:
             # fallback simple
-            hover = self.rect.collidepoint(pygame.mouse.get_pos())
+            hover = enable_hover and self.rect.collidepoint(pygame.mouse.get_pos())
             color = (200, 200, 100) if hover else (100, 100, 100)
             pygame.draw.rect(surf, color, self.rect, border_radius=6)
             if self.label_text and self.font:
@@ -1851,6 +2104,49 @@ class Inbox:
             return
         porcentaje = 0 if self.max_desplazamiento_y == 0 else (self.desplazamiento_y / self.max_desplazamiento_y)
         self.scrollbar_manija_rect.y = int(self.scrollbar_fondo_rect.y + porcentaje * rango)
+    
+    def _calcular_rect_frase(self, texto_linea, x_base, y_base, palabras_clave):
+        """Calcula el rectángulo específico que contiene las palabras clave en una línea.
+        Retorna (rect, frase_encontrada) o (None, None) si no se encuentra."""
+        linea_lower = texto_linea.lower()
+        
+        # Buscar todas las palabras clave en la línea
+        encontradas = []
+        for palabra in palabras_clave:
+            idx = linea_lower.find(palabra.lower())
+            if idx != -1:
+                encontradas.append((idx, palabra))
+        
+        if not encontradas:
+            return None, None
+        
+        # Ordenar por posición
+        encontradas.sort(key=lambda x: x[0])
+        
+        # Encontrar el rango desde la primera hasta la última palabra clave
+        primer_idx = encontradas[0][0]
+        ultima_palabra = encontradas[-1][1]
+        ultimo_idx = linea_lower.find(ultima_palabra.lower()) + len(ultima_palabra)
+        
+        # Extraer la frase que contiene todas las palabras clave
+        frase = texto_linea[primer_idx:ultimo_idx]
+        
+        # Calcular ancho de texto antes de la frase
+        texto_antes = texto_linea[:primer_idx]
+        ancho_antes = self.font_text.size(texto_antes)[0]
+        
+        # Calcular ancho de la frase
+        ancho_frase = self.font_text.size(frase)[0]
+        
+        # Crear rectángulo específico para la frase
+        rect = pygame.Rect(
+            x_base + ancho_antes,
+            y_base,
+            ancho_frase,
+            self.alto_linea
+        )
+        
+        return rect, frase
 
     def handle_event(self, event, hacker_rect=None):
         header, panel = self._calc_rects(hacker_rect)
@@ -2014,9 +2310,12 @@ class EmailPanel:
             image_paths=[get_asset_path("assets/btn_eliminar.png"), get_asset_path("assets/btn_delete.png")], label_text="Eliminar", font=font_buttons)
         self.btn_reportar = ImageButton((0, 0), (160, 44),
             image_paths=[get_asset_path("assets/btn_reportar.png"), get_asset_path("assets/btn_report.png")], label_text="Reportar", font=font_buttons)
+        
+        # NUEVO: Botón de búsqueda por internet
+        self.btn_buscar = ImageButton((0, 0), (120, 35), label_text="Buscar Web", font=font_text)
 
         # flujo de razones
-        self.mode = "reading"
+        self.mode = "reading"  # Valores: "reading", "reasons", "search_mode", "search_results"
         self.razones_sel = []
         self.btn_razones = [
             {"rect": pygame.Rect(0, 0, 120, 30), "razon": "Logo", "texto": "Logo"},
@@ -2024,7 +2323,31 @@ class EmailPanel:
             {"rect": pygame.Rect(0, 0, 120, 30), "razon": "Texto", "texto": "Texto"},
         ]
         self.btn_confirmar = pygame.Rect(0, 0, 120, 38)
+        self.btn_volver_razones = pygame.Rect(0, 0, 120, 30)  # NUEVO: botón volver en modo razones
         self._accion_pendiente = None
+        
+        # NUEVO: Sistema de búsqueda por internet
+        self.search_target = None  # "logo", "dominio", "texto", etc.
+        self.search_results = []  # Lista de mensajes/imágenes a mostrar
+        self.search_step = 0  # Paso actual en la secuencia de búsqueda
+        self.btn_continuar_busqueda = pygame.Rect(0, 0, 150, 40)
+        self.btn_cerrar_busqueda = pygame.Rect(0, 0, 100, 35)
+        self.btn_volver_busqueda = pygame.Rect(20, SCREEN_H - 60, 100, 40)  # Botón volver en esquina inferior izquierda
+        self.logo_rect = None  # Para detectar clicks en el logo
+        self.remitente_rect = None  # Para detectar clicks en el dominio del remitente
+        self.texto_rects = []  # Lista de (rect, texto_linea) para detectar clicks en enlaces
+        # Mensaje temporal cuando se hace click en área no clickeable
+        self.mensaje_temporal = ""
+        self.mensaje_temporal_timer = 0
+        
+        # NUEVO: Scrollbar para panel de resultados de búsqueda
+        self.search_scroll_offset = 0
+        self.search_scroll_max = 0
+        self.search_scrollbar_dragging = False
+        self.search_scrollbar_drag_start_y = 0
+        self.search_scrollbar_drag_start_offset = 0
+        self.search_scrollbar_rect = None
+        self.search_scrollbar_handle = None
 
         # --- (NUEVO) Estado de la barra de Scroll (en español) ---
         self._area_texto_rect = pygame.Rect(0, 0, 0, 0)
@@ -2046,10 +2369,11 @@ class EmailPanel:
     def _calcular_layout(self):
         """Calcula el área de texto y la configuración de la barra de scroll."""
         header_h = 24
+        remitente_h = self.font_text.get_height() + 8  # Altura del remitente + padding
         show_logo = self.correo.has_panel_logo()
         logo = self.correo.load_logo(max_size=self.panel_logo_size) if show_logo else None
         used_logo_h = logo.get_height() if logo else (self.panel_logo_size[1] if show_logo else 0)
-        add_after_header = (used_logo_h + 14) if show_logo else 0
+        add_after_header = remitente_h + (used_logo_h + 14) if show_logo else remitente_h
         top_y = self.rect.y + 8 + header_h + 10 + add_after_header
         
         # Área de texto es más angosta para dar espacio al scrollbar
@@ -2071,6 +2395,49 @@ class EmailPanel:
             self.scrollbar_manija_rect = pygame.Rect(self.scrollbar_fondo_rect.x, self.scrollbar_fondo_rect.y, 15, handle_h)
             self._actualizar_pos_manija() # Sincronizar posición
 
+    def _calcular_rect_frase(self, texto_linea, x_base, y_base, palabras_clave):
+        """Calcula el rectángulo específico que contiene las palabras clave en una línea.
+        Retorna (rect, frase_encontrada) o (None, None) si no se encuentra."""
+        linea_lower = texto_linea.lower()
+        
+        # Buscar todas las palabras clave en la línea
+        encontradas = []
+        for palabra in palabras_clave:
+            idx = linea_lower.find(palabra.lower())
+            if idx != -1:
+                encontradas.append((idx, palabra))
+        
+        if not encontradas:
+            return None, None
+        
+        # Ordenar por posición
+        encontradas.sort(key=lambda x: x[0])
+        
+        # Encontrar el rango desde la primera hasta la última palabra clave
+        primer_idx = encontradas[0][0]
+        ultima_palabra = encontradas[-1][1]
+        ultimo_idx = linea_lower.find(ultima_palabra.lower()) + len(ultima_palabra)
+        
+        # Extraer la frase que contiene todas las palabras clave
+        frase = texto_linea[primer_idx:ultimo_idx]
+        
+        # Calcular ancho de texto antes de la frase
+        texto_antes = texto_linea[:primer_idx]
+        ancho_antes = self.font_text.size(texto_antes)[0]
+        
+        # Calcular ancho de la frase
+        ancho_frase = self.font_text.size(frase)[0]
+        
+        # Crear rectángulo específico para la frase
+        rect = pygame.Rect(
+            x_base + ancho_antes,
+            y_base,
+            ancho_frase,
+            self.alto_linea
+        )
+        
+        return rect, frase
+
     def _actualizar_pos_manija(self):
         """Actualiza la posición Y de la manija del scrollbar basado en self.desplazamiento_y"""
         if not self.necesita_scrollbar:
@@ -2081,8 +2448,528 @@ class EmailPanel:
         
         rango_y_manija = self.scrollbar_fondo_rect.h - self.scrollbar_manija_rect.h
         self.scrollbar_manija_rect.y = self.scrollbar_fondo_rect.y + (porcentaje_scroll * rango_y_manija)
+    
+    def iniciar_busqueda_web(self):
+        """Activa el modo de selección para búsqueda web"""
+        self.mode = "search_mode"
+        self.search_target = None
+        self.search_results = []
+        self.search_step = 0
+    
+    def procesar_click_busqueda(self, pos):
+        """Procesa un click durante el modo de búsqueda y determina qué se buscó"""
+        # Detectar si clickó en el logo
+        if self.logo_rect and self.logo_rect.collidepoint(pos):
+            self.search_target = "logo"
+            self._generar_resultados_logo()
+            self.mode = "search_results"
+            self.search_step = 0
+            return True
+        
+        # Detectar si clickó en el dominio del remitente
+        if self.remitente_rect and self.remitente_rect.collidepoint(pos):
+            self.search_target = "dominio"
+            self._generar_resultados_dominio()
+            self.mode = "search_results"
+            self.search_step = 0
+            return True
+        
+        # Detectar si clickó en algún texto clickeable
+        for item in self.texto_rects:
+            # Manejar tanto el nuevo formato (rect, line, target) como el viejo (rect, line)
+            if len(item) == 3:
+                rect, texto_linea, target = item
+            else:
+                rect, texto_linea = item
+                target = None
+            
+            if rect.collidepoint(pos):
+                # Si tenemos un target específico del nuevo formato, usarlo directamente
+                if target:
+                    self.search_target = target
+                    self._generar_resultados_enlace(texto_linea)
+                    self.mode = "search_results"
+                    self.search_step = 0
+                    return True
+                
+                # Fallback para formato antiguo: detectar por contenido de texto
+                # Detectar texto específico de lotería (solo la línea de pago/tasa)
+                if (("tasa" in texto_linea.lower() and "procesamiento" in texto_linea.lower()) or
+                    ("$20" in texto_linea and ("tasa" in texto_linea.lower() or "pago" in texto_linea.lower()))):
+                    self.search_target = "texto_premio"
+                    self._generar_resultados_enlace(texto_linea)
+                    self.mode = "search_results"
+                    self.search_step = 0
+                    return True
+                
+                # Enlaces genéricos (http o portal) - pero NO para correo de IT
+                es_correo_it = "it-soporte" in self.correo.remitente.lower()
+                if not es_correo_it and ("http" in texto_linea.lower() or "portal" in texto_linea.lower()):
+                    self.search_target = "enlace"
+                    self._generar_resultados_enlace(texto_linea)
+                    self.mode = "search_results"
+                    self.search_step = 0
+                    return True
+        
+        # No se encontró nada clickeable
+        return False
+    
+    def _generar_resultados_logo(self):
+        """Genera la secuencia de resultados para búsqueda de logo según razones_correctas"""
+        es_logo_sospechoso = "Logo" in self.correo.razones_correctas
+        
+        # CORREO 1: Microsoft falso (logo legítimo pero correo malicioso)
+        if "microsoft" in self.correo.remitente.lower() or "microsoft" in self.correo.asunto.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Buscas el logo por búsqueda de imagen inversa..."},
+                {"tipo": "texto", "contenido": "Te aparecen los últimos tres logos de Microsoft, en orden cronológico:"},
+                {
+                    "tipo": "imagenes",
+                    "imagenes": [
+                        "assets/logos/microsoft_1995.png",
+                        "assets/logos/microsoft_2009.png",
+                        "assets/logos/microsoft_2012.png"
+                    ],
+                    "labels": ["1995", "2009", "2012-Actual"]
+                },
+                {"tipo": "texto", "contenido": "Compara el logo del correo con estos resultados oficiales."}
+            ]
+        
+        # CORREO 3: Lotería falsa (logo sospechoso)
+        elif "lotto" in self.correo.remitente.lower() or "ganado" in self.correo.asunto.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Buscas el logo en internet..."},
+                {"tipo": "texto", "contenido": "Encuentras múltiples versiones distintas del mismo logo, cada una usada por supuestas 'loterías internacionales' que son denunciadas como estafas."},
+                {"tipo": "texto", "contenido": "No existe un logo oficial consistente, ni un organismo registrado con ese nombre."},
+                {"tipo": "texto", "contenido": "Compara esta información con el logo del correo."}
+            ]
+        
+        # CORREOS LEGÍTIMOS (Synergy Corp, LinkedIn)
+        elif "synergy-corp" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Buscas el logo de Synergy Corp en el directorio interno..."},
+                {"tipo": "texto", "contenido": "Encuentras el historial de logos de la empresa en orden cronológico:"},
+                {
+                    "tipo": "imagenes",
+                    "imagenes": [
+                        "assets/logos/synergy_corp_2015.png",
+                        "assets/logos/synergy_corp_2019.png",
+                        "assets/logos/synergy_corp.png"
+                    ],
+                    "labels": ["2015", "2019", "2023-Actual"]
+                },
+                {"tipo": "texto", "contenido": "Compara el logo del correo con estos resultados oficiales."}
+            ]
+        elif "linkedin" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Decides revisar los logos recientes de LinkedIn..."},
+                {"tipo": "texto", "contenido": "Te das cuenta que siempre ha sido el mismo logo..."},
+                {
+                    "tipo": "imagenes",
+                    "imagenes": ["assets/logos/linkedin.png"],
+                    "labels": ["Logo actual"]
+                },
+                {"tipo": "texto", "contenido": "Compara el logo del correo con este resultado oficial."}
+            ]
+        
+        # CORREO DEL HACKER (sin logo)
+        elif not self.correo.has_panel_logo():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "No hay logo para buscar en este correo..."},
+                {"tipo": "texto", "contenido": "La ausencia de logo en comunicaciones corporativas es inusual."}
+            ]
+        
+        else:
+            # Fallback genérico
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Buscando logo en internet..."},
+                {"tipo": "texto", "contenido": "No se encontraron resultados significativos."}
+            ]
+    
+    def _generar_resultados_dominio(self):
+        """Genera la secuencia de resultados para búsqueda del dominio según razones_correctas"""
+        es_dominio_sospechoso = "Dominio" in self.correo.razones_correctas
+        
+        # CORREO 1: Microsoft falso - dominio sospechoso (microsoft-support@outlook.com)
+        if "microsoft" in self.correo.remitente.lower() or "microsoft" in self.correo.asunto.lower():
+            if es_dominio_sospechoso:
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Investigas los dominios oficiales de Microsoft..."},
+                    {
+                        "tipo": "lista",
+                        "titulo": "Dominios legítimos de Microsoft:",
+                        "items": ["microsoft.com", "microsoftsupport.com", "mail.support.microsoft.com"]
+                    },
+                ]
+            else:
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Investigas los dominios oficiales de Microsoft..."},
+                    {"tipo": "texto", "contenido": "El dominio parece legítimo."}
+                ]
+        
+        # CORREO 2: Synergy Corp RH - dominio legítimo
+        elif "synergy-corp" in self.correo.remitente.lower() and "rh@" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Verificas los dominios oficiales de tu empresa Synergy Corp..."},
+                {
+                    "tipo": "lista",
+                    "titulo": "Dominios legítimos de Synergy Corp:",
+                    "items": [
+                        "synergy-corp.com",
+                        "mail.synergy-corp.com",
+                        "intranet.synergy-corp.com",
+                        "auth.synergy-corp.com",
+                        "it.synergy-corp.com"
+                    ]
+                },
+            ]
+        
+        # CORREO 3: Lotería falsa
+        elif "lotto" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Buscas los dominios oficiales asociados a 'Lotto', 'Lotería Internacional', o cualquier organismo gubernamental de sorteos..."},
+                {
+                    "tipo": "lista",
+                    "titulo": "Resultados:",
+                    "items": [
+                        "Los organismos reales usan dominios gubernamentales o corporativos verificables.",
+                        "No existe ninguna empresa registrada llamada 'Ganadores Lotto'.",
+                        "No aparece información legal, reseñas oficiales, ni páginas de organismos reguladores.",
+                        "Se encuentran reportes en foros de usuarios indicando que dominios similares se usan en estafas de premios falsos."
+                    ]
+                },
+            ]
+        
+        # CORREO 4: LinkedIn legítimo
+        elif "linkedin" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Decides buscar en línea el dominio de LinkedIn..."},
+                {
+                    "tipo": "lista",
+                    "titulo": "Dominios legítimos de LinkedIn:",
+                    "items": [
+                        "Todos los que terminen en linkedin.com",
+                        "linkedin_support@cs.linkedin.com",
+                        "linkedin@e.linkedin.com",
+                        "linkedin@el.linkedin.com"
+                    ]
+                },
+            ]
+        
+        # CORREO 5: Synergy Corp IT - dominio legítimo PERO correo malicioso
+        elif "synergy-corp" in self.correo.remitente.lower() and "it-soporte" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Verificas los dominios oficiales de tu empresa Synergy Corp..."},
+                {
+                    "tipo": "lista",
+                    "titulo": "Dominios legítimos de Synergy Corp:",
+                    "items": [
+                        "synergy-corp.com",
+                        "mail.synergy-corp.com",
+                        "intranet.synergy-corp.com",
+                        "auth.synergy-corp.com",
+                        "it.synergy-corp.com"
+                    ]
+                },
+            ]
+        
+        # CORREO 6: Hacker con IP - dominio MUY sospechoso
+        elif "@192.168" in self.correo.remitente or "unknown" in self.correo.remitente.lower():
+            if es_dominio_sospechoso:
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Investigas el 'dominio' del remitente..."},
+                    {"tipo": "texto", "contenido": "¡Es una dirección IP local! Extremadamente sospechoso."}
+                ]
+            else:
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Investigas el remitente..."},
+                    {"tipo": "texto", "contenido": "El formato es muy inusual."}
+                ]
+        
+        else:
+            # Fallback genérico
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Buscando información sobre el dominio..."},
+                {"tipo": "texto", "contenido": "Información no disponible para este remitente."}
+            ]
+    
+    def _generar_resultados_enlace(self, texto_enlace):
+        """Genera la secuencia de resultados para búsqueda de enlace según razones_correctas"""
+        es_texto_sospechoso = "Texto" in self.correo.razones_correctas
+        
+        # CORREO MICROSOFT - Áreas clickeables específicas
+        if hasattr(self, 'search_target'):
+            # Microsoft Área 4: URL sospechosa
+            if self.search_target == "ms_url_sospechosa":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Investigas los dominios que suele utilizar Microsoft para las URL..."},
+                    {
+                        "tipo": "lista",
+                        "titulo": "Las direcciones legítimas siempre terminan en:",
+                        "items": [
+                            "microsoft.com",
+                            "live.com",
+                            "outlook.com",
+                            "office.com",
+                        ]
+                    },
+                ]
+                return
+            
+            # Microsoft Área 1: "inicio de sesión inusual"
+            if self.search_target == "ms_inicio_sesion":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas información sobre 'alertas de inicio de sesión inusual de Microsoft'..."},
+                    {"tipo": "texto", "contenido": "Los correos legítimos de Microsoft pueden incluir alertas por actividad sospechosa."},
+                    {"tipo": "texto", "contenido": "Sin embargo, los estafadores también usan esta frase para generar urgencia y provocar que el usuario haga clic sin revisar otros detalles del correo."},
+                    {"tipo": "texto", "contenido": "Verifica siempre: el dominio del remitente (@microsoft.com legítimo), enlaces oficiales, y lenguaje profesional."}
+                ]
+                return
+            
+            # Microsoft Área 2: "ha caducado su contraseña"
+            if self.search_target == "ms_caducado_password":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas información sobre 'caducidad de contraseñas en Microsoft'..."},
+                    {"tipo": "texto", "contenido": "Microsoft generalmente no notifica caducidad de contraseñas por correo si la cuenta pertenece a un usuario particular."},
+                    {"tipo": "texto", "contenido": "En organizaciones, la expiración de contraseña se gestiona normalmente desde el panel corporativo o el administrador del dominio."},
+                    {"tipo": "texto", "contenido": "Los atacantes usan esta táctica para que cambies tu contraseña en un sitio falso y robarla."}
+                ]
+                return
+            
+            # Microsoft Área 3: "su cuenta será suspendida de forma permanente"
+            if self.search_target == "ms_suspension":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas información sobre 'suspensión de cuenta Microsoft'..."},
+                    {"tipo": "texto", "contenido": "Algunas compañías utilizan plazos para avisar de acciones de seguridad, aunque los mensajes con tiempos muy cortos son una táctica frecuente en correos fraudulentos para generar sensación de urgencia."},
+                    {"tipo": "texto", "contenido": "Microsoft raramente suspende cuentas de forma tan abrupta sin múltiples avisos previos."},
+                ]
+                return
+        
+        # CORREO 5: Synergy Corp IT - Áreas clickeables específicas
+        if hasattr(self, 'search_target'):
+            # Área 1: Actualización crítica de seguridad
+            if self.search_target == "it_actualizacion":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas en internet si existen 'actualizaciones críticas de seguridad' anunciadas de esta forma..."},
+                    {
+                        "tipo": "lista",
+                        "titulo": "Encuentras que:",
+                        "items": [
+                            "Los departamentos de IT casi nunca anuncian actualizaciones urgentes sin aviso previo.",
+                            "Las actualizaciones serias suelen comunicarse mediante canales oficiales internos, no por correos genéricos.",
+                            "El lenguaje 'crítico' + 'necesario ya' es un patrón común de phishing corporativo."
+                        ]
+                    },
+                ]
+                return
+            
+            # Área 2: Hora específica (2:00 AM)
+            if self.search_target == "it_hora":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas sobre la práctica de programar migraciones a las '2:00 AM'..."},
+                    {
+                        "tipo": "lista",
+                        "titulo": "Encuentras lo siguiente:",
+                        "items": [
+                            "Es cierto que los equipos de IT trabajan de madrugada, pero rara vez obligan a los empleados a realizar acciones manuales en la madrugada.",
+                            "Cuando hay migraciones reales, se hacen sin que el usuario tenga que iniciar sesión o validar nada.",
+                            "La hora exacta + urgencia suele usarse en phishing para crear estrés y hacer que la víctima actúe rápido."
+                        ]
+                    },
+                ]
+                return
+            
+            # Área 3: Validar credenciales
+            if self.search_target == "it_validar":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Investigas si es normal que el departamento de IT pida 'validar credenciales' durante migraciones..."},
+                    {
+                        "tipo": "lista",
+                        "titulo": "Encuentras que:",
+                        "items": [
+                            "En migraciones reales no se pide al usuario volver a introducir sus credenciales en un portal externo.",
+                            "Los sistemas corporativos manejan la migración internamente.",
+                            "Solicitar credenciales es la señal más típica de phishing interno."
+                        ]
+                    },
+                ]
+                return
+            
+            # Área 4: Amenaza de pérdida de datos
+            if self.search_target == "it_amenaza":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Investigaste si los buzones pueden 'corromperse' por no validar algo manualmente..."},
+                    {
+                        "tipo": "lista",
+                        "titulo": "Descubres que:",
+                        "items": [
+                            "La corrupción de datos por culpa del usuario es extremadamente rara.",
+                            "Esta amenaza es un clásico de ingeniería social para generar miedo y urgencia.",
+                            "Los departamentos de IT jamás responsabilizarían al empleado por corromper datos por no hacer clic."
+                        ]
+                    },
+                ]
+                return
+            
+            # Área 5: Iniciar sesión con credenciales habituales
+            if self.search_target == "it_sesion":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas si es normal que IT pida 'iniciar sesión con su correo y contraseña habituales' desde un enlace externo."},
+                    {
+                        "tipo": "lista",
+                        "titulo": "Aprendes que:",
+                        "items": [
+                            "Las empresas prohíben explícitamente ingresar credenciales corporativas en páginas no oficiales.",
+                            "Los portales de migración internos jamás se envían por correo sin verificación adicional.",
+                            "Solicitar 'tu contraseña habitual' es casi siempre una señal de ataque."
+                        ]
+                    },
+                ]
+                return
+        
+        # CORREO 1: Microsoft falso - texto sospechoso (enlace malicioso)
+        if "microsoft" in self.correo.asunto.lower() or "microsoft" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Decides buscar en internet qué dominios utiliza Microsoft para sus servicios oficiales. Tras unos minutos de investigación encuentras lo siguiente:"},
+                {
+                    "tipo": "lista",
+                    "titulo": "Dominios oficiales de servicios Microsoft:",
+                    "items": ["microsoft.com", "live.com", "outlook.com", "office.com"]
+                },
+                {"tipo": "texto", "contenido": "Compara estos dominios con el enlace del correo."}
+            ]
+        
+        # CORREO 2: Synergy Corp RH - texto legítimo
+        elif "synergy-corp" in self.correo.remitente.lower() and "rh@" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Revisas el contenido del correo de RH..."},
+                {"tipo": "texto", "contenido": "El mensaje es informativo sobre políticas de vacaciones."},
+                {"tipo": "texto", "contenido": "No solicita acciones inmediatas ni información sensible."}
+            ]
+        
+        # CORREO 3: Lotería - áreas clicables específicas
+        if hasattr(self, 'search_target'):
+            # Área 1: "¡Ha ganado la Lotería Internacional!"
+            if self.search_target == "loteria_ganado":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas el nombre 'Lotería Internacional' en internet."},
+                    {"tipo": "texto", "contenido": "Encuentras que existen muchas 'loterías internacionales', pero la mayoría de las legítimas mencionan claramente la entidad organizadora, el país, y la licencia bajo la que operan."}
+                ]
+                return
+            
+            # Área 2: "Su correo fue seleccionado al azar de una base de datos global"
+            if self.search_target == "loteria_base_datos":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas cómo funcionan los sorteos oficiales a nivel internacional."},
+                    {"tipo": "texto", "contenido": "La mayoría menciona que no utilizan bases de datos globales de correos electrónicos, sino que los participantes deben inscribirse voluntariamente o comprar un boleto."},
+                    {"tipo": "texto", "contenido": "Algunos foros advierten que expresiones como 'base de datos global' suelen ser demasiado genéricas."}
+                ]
+                return
+            
+            # Área 3: "Ha ganado $500,000 USD"
+            if self.search_target == "loteria_monto":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas premios típicos de loterías reconocidas."},
+                    {"tipo": "texto", "contenido": "Es común que indiquen el monto, sí, pero por lo general incluyen también información legal, impuestos, número de sorteo o un código verificador del boleto ganador."}
+                ]
+                return
+            
+            # Área 4: "solo debe cubrir una 'tasa de procesamiento' de $20"
+            if self.search_target == "loteria_tasa":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas si las loterías oficiales cobran alguna tarifa antes de entregar un premio."},
+                    {"tipo": "texto", "contenido": "Encuentras que la mayoría aclara que nunca piden pagos por adelantado; las tasas o impuestos se descuentan automáticamente del premio o se pagan tras reclamarlo en persona."},
+                    {"tipo": "texto", "contenido": "También encuentras advertencias sobre premios que solicitan pagos previos."}
+                ]
+                return
+            
+            # Área 5: "Haga clic aquí para pagar la tasa y recibir su premio"
+            if self.search_target == "loteria_clic_pago":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas cómo son los procesos de reclamo en sorteos reales."},
+                    {"tipo": "texto", "contenido": "Normalmente requieren acudir a una entidad autorizada, presentar documentos y firmar formularios."},
+                    {"tipo": "texto", "contenido": "No suele haber pagos por adelantado a través de enlaces de correo genéricos."}
+                ]
+                return
+            
+            # Área 6: "La oferta caduca en 24 horas"
+            if self.search_target == "loteria_caduca":
+                self.search_results = [
+                    {"tipo": "texto", "contenido": "Buscas cuánto tiempo dan las loterías para reclamar premios."},
+                    {"tipo": "texto", "contenido": "La mayoría de premios grandes tienen plazos que van desde días hasta meses, según la legislación del país."},
+                    {"tipo": "texto", "contenido": "Un límite de solo 24 horas es inusual, aunque no imposible."}
+                ]
+                return
+        
+        # Fallback genérico para lotería (si no se usa search_target)
+        elif "lotto" in self.correo.remitente.lower() or "ganado" in self.correo.asunto.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Buscas información sobre el mensaje 'Ha ganado $500,000... solo debe pagar una 'tasa de procesamiento' de $20...'"},
+                {"tipo": "texto", "contenido": "Encuentras decenas de reportes del mismo formato de mensaje: 'Ha ganado un premio internacional', 'pague una tasa pequeña', 'correo seleccionado al azar'."},
+                {
+                    "tipo": "lista",
+                    "titulo": "Información encontrada:",
+                    "items": [
+                        "En todos los casos, usuarios reportan estos mensajes como estafas típicas de adelanto de fondos ('advance fee scam').",
+                        "Ninguna lotería legítima pide dinero para reclamar un premio.",
+                        "El formato es idéntico al de estafas nigerianas clásicas."
+                    ]
+                }
+            ]
+        
+        # CORREO 4: LinkedIn legítimo
+        elif "linkedin" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Revisas el contenido de la notificación..."},
+                {"tipo": "texto", "contenido": "Te informa sobre una invitación para conectar."},
+                {"tipo": "texto", "contenido": "Sugiere iniciar sesión en el sitio oficial, no a través del enlace."}
+            ]
+        
+        # CORREO 6: Hacker - texto muy sospechoso (amenazante)
+        elif "@192.168" in self.correo.remitente or "unknown" in self.correo.remitente.lower():
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Lees el contenido del mensaje..."},
+                {"tipo": "texto", "contenido": "Tono personal e intimidante."},
+                {"tipo": "texto", "contenido": "Menciona específicamente tus acciones recientes."}
+            ]
+        
+        else:
+            # Fallback genérico
+            self.search_results = [
+                {"tipo": "texto", "contenido": "Analizando el enlace..."},
+                {"tipo": "texto", "contenido": "Verifica siempre que el dominio coincida con el servicio oficial."}
+            ]
+    
+    def avanzar_resultado_busqueda(self):
+        """Avanza al siguiente paso en los resultados de búsqueda"""
+        if self.search_step < len(self.search_results) - 1:
+            self.search_step += 1
+            self.search_scroll_offset = 0  # Resetear scroll al cambiar de resultado
+            return True
+        return False
+    
+    def cerrar_busqueda(self):
+        """Cierra el sistema de búsqueda y vuelve al modo normal"""
+        self.mode = "reading"
+        self.search_target = None
+        self.search_results = []
+        self.search_step = 0
+        self.search_scroll_offset = 0  # Resetear scroll al cerrar
+        self.mensaje_temporal = ""
+        self.mensaje_temporal_timer = 0
+    
+    def mostrar_mensaje_temporal(self, mensaje, duracion=2000):
+        """Muestra un mensaje temporal en la pantalla"""
+        self.mensaje_temporal = mensaje
+        self.mensaje_temporal_timer = duracion
 
     def update(self, dt):
+        # Actualizar timer del mensaje temporal
+        if self.mensaje_temporal_timer > 0:
+            self.mensaje_temporal_timer -= dt
+            if self.mensaje_temporal_timer <= 0:
+                self.mensaje_temporal = ""
+        
         # Lógica de arrastre del scroll
         if self.esta_arrastrando:
             mx, my = pygame.mouse.get_pos()
@@ -2110,7 +2997,24 @@ class EmailPanel:
             self._actualizar_pos_manija() # Sincronizar la manija visualmente
 
     def handle_event(self, event):
-        # --- (NUEVO) Manejo de Rueda del Mouse ---
+        # --- Manejo de Rueda del Mouse en modo search_results ---
+        if self.mode == "search_results" and event.type == pygame.MOUSEWHEEL:
+            if self.search_scroll_max > 0:
+                self.search_scroll_offset -= event.y * 20
+                self.search_scroll_offset = max(0, min(self.search_scroll_offset, self.search_scroll_max))
+                return None
+        
+        # --- Manejo de Arrastre de Scrollbar en search_results ---
+        if self.mode == "search_results" and event.type == pygame.MOUSEMOTION and self.search_scrollbar_dragging:
+            if self.search_scrollbar_rect and self.search_scrollbar_handle:
+                delta_y = event.pos[1] - self.search_scrollbar_drag_start_y
+                scrollbar_range = self.search_scrollbar_rect.h - self.search_scrollbar_handle.h
+                if scrollbar_range > 0:
+                    scroll_ratio = delta_y / scrollbar_range
+                    self.search_scroll_offset = max(0, min(int(self.search_scrollbar_drag_start_offset + scroll_ratio * self.search_scroll_max), self.search_scroll_max))
+                return None
+        
+        # --- (NUEVO) Manejo de Rueda del Mouse en reading mode ---
         if event.type == pygame.MOUSEWHEEL and self.necesita_scrollbar:
              # Solo scrollear si el mouse está sobre el panel de texto
             if self._area_texto_rect.collidepoint(pygame.mouse.get_pos()):
@@ -2140,6 +3044,7 @@ class EmailPanel:
             # (Existente) Manejo de botones de acción
             if self.btn_back.handle_event(event):
                 return {"type": "back"}
+            
             if self.mode == "reading":
                 if self.btn_responder.handle_event(event):
                     return {"type": "accion", "accion": "responder"}
@@ -2147,7 +3052,67 @@ class EmailPanel:
                     self.mode = "reasons"; self._accion_pendiente = "eliminar"; return None
                 if self.btn_reportar.handle_event(event):
                     self.mode = "reasons"; self._accion_pendiente = "reportar"; return None
-            else:
+                # NUEVO: Botón de búsqueda web
+                if self.btn_buscar.handle_event(event):
+                    self.iniciar_busqueda_web()
+                    return None
+            
+            elif self.mode == "search_mode":
+                # Botón volver en modo búsqueda
+                if self.btn_volver_busqueda.collidepoint(event.pos):
+                    self.cerrar_busqueda()
+                    return None
+                
+                # Modo de selección: detectar clicks en áreas específicas
+                if self.procesar_click_busqueda(event.pos):
+                    return None
+                
+                # Click en área no clickeable dentro del panel = mostrar mensaje
+                if self.rect.collidepoint(event.pos):
+                    self.mostrar_mensaje_temporal("Nada raro por aquí...")
+                    return None
+                
+                # Click completamente fuera del panel = cancelar búsqueda
+                if event.pos[0] < self.rect.x or event.pos[0] > self.rect.right or \
+                   event.pos[1] < self.rect.y or event.pos[1] > self.rect.bottom:
+                    self.cerrar_busqueda()
+                    return None
+            
+            elif self.mode == "search_results":
+                # Manejo de clicks en scrollbar primero
+                if self.search_scrollbar_handle and self.search_scrollbar_handle.collidepoint(event.pos):
+                    self.search_scrollbar_dragging = True
+                    self.search_scrollbar_drag_start_y = event.pos[1]
+                    self.search_scrollbar_drag_start_offset = self.search_scroll_offset
+                    return None
+                elif self.search_scrollbar_rect and self.search_scrollbar_rect.collidepoint(event.pos):
+                    # Click en la barra pero no en la manija - saltar arriba o abajo
+                    if event.pos[1] < self.search_scrollbar_handle.y:
+                        # Click arriba de la manija
+                        self.search_scroll_offset = max(0, self.search_scroll_offset - 100)
+                    else:
+                        # Click abajo de la manija
+                        self.search_scroll_offset = min(self.search_scroll_max, self.search_scroll_offset + 100)
+                    return None
+                
+                # Navegación por los resultados
+                if self.btn_continuar_busqueda.collidepoint(event.pos):
+                    if not self.avanzar_resultado_busqueda():
+                        # Ya no hay más pasos, cerrar
+                        self.cerrar_busqueda()
+                    return None
+                if self.btn_cerrar_busqueda.collidepoint(event.pos):
+                    self.cerrar_busqueda()
+                    return None
+            
+            elif self.mode == "reasons":
+                # Botón volver en modo razones
+                if self.btn_volver_razones.collidepoint(event.pos):
+                    self.mode = "reading"
+                    self.razones_sel = []  # Limpiar selección
+                    self._accion_pendiente = None
+                    return None
+                
                 for b in self.btn_razones:
                     if b["rect"].collidepoint(event.pos):
                         r = b["razon"]
@@ -2158,11 +3123,13 @@ class EmailPanel:
                 if self.btn_confirmar.collidepoint(event.pos):
                     acc = self._accion_pendiente
                     self.mode = "reading"
+                    self.razones_sel = []  # Limpiar selección
                     return {"type": "reasons_confirm", "accion": acc, "razones": list(self.razones_sel)}
 
         # --- (NUEVO) Manejo de Soltar Clic ---
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.esta_arrastrando = False
+            self.search_scrollbar_dragging = False
 
         return None
 
@@ -2183,24 +3150,35 @@ class EmailPanel:
         subj_y = header_rect.centery - subj_surf.get_height() // 2
         surf.blit(subj_surf, (subj_x, subj_y))
         # --- FIN CORRECCIÓN HEADER ---
+        
+        # --- NUEVO: Mostrar remitente debajo del header y guardar su rectángulo ---
+        remitente_y = header_rect.bottom + 4
+        remitente_surf = self.font_text.render(f"De: {self.correo.remitente}", True, (180, 180, 200))
+        remitente_x = self.rect.x + 12
+        surf.blit(remitente_surf, (remitente_x, remitente_y))
+        # Guardar rectángulo del remitente para detección de clicks
+        self.remitente_rect = pygame.Rect(remitente_x, remitente_y, remitente_surf.get_width(), remitente_surf.get_height())
 
-        # logo centrado arriba
+        # logo centrado arriba (ajustado para dejar espacio al remitente)
         show_logo = self.correo.has_panel_logo()
         logo = self.correo.load_logo(max_size=self.panel_logo_size) if show_logo else None
-        logo_y = header_rect.bottom + 10
+        logo_y = remitente_y + remitente_surf.get_height() + 8
         if logo:
             logo_x = self.rect.centerx - logo.get_width() // 2
             surf.blit(logo, (logo_x, logo_y))
             logo_rect = pygame.Rect(logo_x, logo_y, logo.get_width(), logo.get_height())
+            self.logo_rect = logo_rect  # Guardar para detección de clicks
         elif show_logo:
             # Placeholder si no hay logo, del mismo tamaño objetivo
             ph_w, ph_h = self.panel_logo_size
             logo_rect = pygame.Rect(self.rect.centerx - ph_w // 2, logo_y, ph_w, ph_h)
             pygame.draw.rect(surf, (60, 70, 90), logo_rect)
             pygame.draw.rect(surf, (220, 220, 235), logo_rect, 2)
+            self.logo_rect = logo_rect  # Guardar para detección de clicks
         else:
             # No reservar espacio ni dibujar placeholder si no hay logo configurado
             logo_rect = pygame.Rect(self.rect.centerx, logo_y, 0, 0)
+            self.logo_rect = None
 
         # --- (CORREGIDO) Renderizado de Texto con Scroll y Clipping ---
         text_x = self._area_texto_rect.x
@@ -2208,6 +3186,9 @@ class EmailPanel:
         text_h = self._area_texto_rect.h
 
         if text_h > 0:
+            # Limpiar lista de rectángulos de texto para esta pasada de render
+            self.texto_rects = []
+            
             # Establecer clip para asegurar que no se dibuje fuera
             prev_clip = surf.get_clip()
             clip_rect = self._area_texto_rect.copy() # Usar el rect del área de texto
@@ -2225,6 +3206,111 @@ class EmailPanel:
 
                 t = self.font_text.render(line, True, (255, 255, 255))
                 surf.blit(t, (text_x, y_pos))
+                
+                # Guardar rectángulos específicos para áreas clicables del correo de IT
+                if y_pos >= text_y_start and y_pos < text_y_start + text_h:
+                    es_correo_it = "it-soporte" in self.correo.remitente.lower()
+                    es_correo_microsoft = "microsoft-support@outlook.com" in self.correo.remitente.lower()
+                    
+                    if es_correo_it:
+                        # Área 1: "actualización crítica de seguridad"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["Debido a una actualización crítica de seguridad"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "it_actualizacion"))
+                        
+                        # Área 2: "2:00 AM"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, ["esta noche a", "las 2:00 AM"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "it_hora"))
+                        
+                        # Área 3: "valide sus credenciales"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["necesitamos que valide sus credenciales"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "it_validar"))
+                        
+                        # Área 4: "corromperse y perdería sus datos"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["Si no completa esta validación, su buzón podría", "corromperse y perdería sus datos"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "it_amenaza"))
+                        
+                        # Área 5: "portal de migración con su correo"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["Por favor, inicie sesión en el portal de migración", "con su correo y contraseña habituales:"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "it_sesion"))
+                    
+                    elif es_correo_microsoft:
+                        # Área 1: "inicio de sesión inusual"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["Detectamos un inicio de sesión inusual en su cuenta", "de Microsoft desde una ubicación no reconocida"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "ms_inicio_sesion"))
+                        
+                        # Área 2: "ha caducado su contraseña"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["Como medida de precaución, hemos caducado su"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "ms_caducado_password"))
+                        
+                        # Área 3: "su cuenta será suspendida de forma permanente"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["Si no completa esta acción en las próximas 2 horas,", "su cuenta será suspendida de forma permanente"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "ms_suspension"))
+                        
+                        # Área 4: URL sospechosa
+                        if "http" in line.lower():
+                            rect, frase = self._calcular_rect_frase(line, text_x, y_pos, ["https://microsoft-update-auth.portal-checker.inf", "o/restore"])
+                            if rect:
+                                self.texto_rects.append((rect, line, "ms_url_sospechosa"))
+                    
+                    # CORREO LOTERÍA: 6 áreas clicables
+                    elif "lotto" in self.correo.remitente.lower() or "ganado" in self.correo.asunto.lower():
+                        # Área 1: "¡Ha ganado la Lotería Internacional!"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["¡Es su día de suerte! ¡Ha ganado la Lotería", "Internacional!"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "loteria_ganado"))
+                        
+                        # Área 2: "Su correo fue seleccionado al azar de una base de datos global"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["Su dirección de correo electrónico fue", "seleccionada al azar de una base de datos global"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "loteria_base_datos"))
+                        
+                        # Área 3: "Ha ganado $500,000 USD"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["$500,000 USD!"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "loteria_monto"))
+                        
+                        # Área 4: "solo debe cubrir una 'tasa de procesamiento' de $20"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["solo debe cubrir una", "pequeña 'tasa de procesamiento y transferencia", "bancaria internacional' de $20"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "loteria_tasa"))
+                        
+                        # Área 5: "Haga clic aquí para pagar la tasa y recibir su premio"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["Haga clic aquí para pagar la tasa y recibir su", "premio."])
+                        if rect:
+                            self.texto_rects.append((rect, line, "loteria_clic_pago"))
+                        
+                        # Área 6: "La oferta caduca en 24 horas"
+                        rect, frase = self._calcular_rect_frase(line, text_x, y_pos, 
+                                                                ["La oferta caduca en 24 horas"])
+                        if rect:
+                            self.texto_rects.append((rect, line, "loteria_caduca"))
+                    
+                    else:
+                        # Para otros correos, guardar línea completa si contiene enlaces
+                        if "http" in line.lower() or ("portal" in line.lower() and not es_correo_it):
+                            line_rect = pygame.Rect(text_x, y_pos, t.get_width(), self.alto_linea)
+                            self.texto_rects.append((line_rect, line, "enlace"))
+                
                 y_pos += self.alto_linea
                 
             surf.set_clip(prev_clip) # Restaurar clip
@@ -2244,31 +3330,402 @@ class EmailPanel:
         by = max(header_rect.bottom + 4, logo_rect.y)
         self.btn_back.rect.update(bx, by, btn_w, btn_h)
         self.btn_back.draw(surf)
+        
+        # NUEVO: Botón de búsqueda web (a la derecha del panel)
+        search_btn_x = self.rect.right - 130
+        search_btn_y = by
+        self.btn_buscar.rect.update(search_btn_x, search_btn_y, 120, 35)
+        if self.mode == "reading":  # Solo mostrar en modo lectura
+            self.btn_buscar.draw(surf)
 
         base_y = self.rect.bottom + 12
         self.btn_responder.rect.update(self.rect.x, base_y, 160, 44)
         self.btn_eliminar.rect.update(self.rect.x + 170, base_y, 160, 44)
         self.btn_reportar.rect.update(self.rect.x + 340, base_y, 160, 44)
-        self.btn_responder.draw(surf)
-        self.btn_eliminar.draw(surf)
-        self.btn_reportar.draw(surf)
+        
+        # Dibujar botones principales - desactivar hover si estamos en modo razones
+        enable_hover = (self.mode != "reasons")
+        self.btn_responder.draw(surf, enable_hover)
+        self.btn_eliminar.draw(surf, enable_hover)
+        self.btn_reportar.draw(surf, enable_hover)
 
         # overlay de razones
         if self.mode == "reasons":
             overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 120))
+            overlay.fill((0, 0, 0, 150))
             surf.blit(overlay, (0, 0))
-            bx = self.rect.x; by = self.rect.bottom + 60
+            
+            # Cuadro centrado para las razones
+            panel_w, panel_h = 500, 240
+            panel_x = (SCREEN_W - panel_w) // 2
+            panel_y = (SCREEN_H - panel_h) // 2
+            panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+            
+            # Fondo del panel
+            pygame.draw.rect(surf, (40, 45, 60), panel_rect, border_radius=12)
+            pygame.draw.rect(surf, (100, 120, 150), panel_rect, 3, border_radius=12)
+            
+            # Título "Selecciona las razones:"
+            titulo_y = panel_y + 25
+            titulo_surf = self.font_buttons.render("Selecciona las razones:", True, (255, 255, 255))
+            titulo_x = panel_rect.centerx - titulo_surf.get_width() // 2
+            surf.blit(titulo_surf, (titulo_x, titulo_y))
+            
+            # Botones de razones centrados horizontalmente dentro del panel
+            mx, my = pygame.mouse.get_pos()
+            btn_w = 120
+            btn_h = 35
+            btn_spacing = 15  # Espacio entre botones
+            btn_y = titulo_y + 60
+            
+            # Calcular ancho total de los 3 botones + espacios
+            total_width = (btn_w * 3) + (btn_spacing * 2)
+            # Centrar dentro del panel
+            start_x = panel_x + (panel_w - total_width) // 2
+            
             for i, b in enumerate(self.btn_razones):
-                b["rect"].update(bx + i * 140, by, 120, 30)
-                color = (100, 200, 100) if b["razon"] in self.razones_sel else (100, 100, 100)
-                pygame.draw.rect(surf, color, b["rect"], border_radius=5)
-                s = self.font_text.render(b["texto"], True, (0, 0, 0))
+                btn_x = start_x + i * (btn_w + btn_spacing)
+                b["rect"].update(btn_x, btn_y, btn_w, btn_h)
+                
+                # Efecto hover solo para botones de razones
+                is_hover = b["rect"].collidepoint(mx, my)
+                is_selected = b["razon"] in self.razones_sel
+                
+                if is_selected:
+                    color = (80, 180, 80)  # Verde cuando está seleccionado
+                elif is_hover:
+                    color = (120, 140, 160)  # Gris claro en hover
+                else:
+                    color = (70, 80, 100)  # Gris oscuro normal
+                
+                pygame.draw.rect(surf, color, b["rect"], border_radius=6)
+                pygame.draw.rect(surf, (150, 170, 190), b["rect"], 2, border_radius=6)
+                
+                # Texto del botón
+                s = self.font_text.render(b["texto"], True, (255, 255, 255))
                 surf.blit(s, (b["rect"].centerx - s.get_width() // 2, b["rect"].centery - s.get_height() // 2))
-            self.btn_confirmar.update(self.rect.x + 2*140, by + 40, 120, 38)
-            pygame.draw.rect(surf, (100, 200, 100), self.btn_confirmar, border_radius=5)
-            s = self.font_buttons.render("Confirmar", True, (0, 0, 0))
-            surf.blit(s, (self.btn_confirmar.centerx - s.get_width() // 2, self.btn_confirmar.centery - s.get_height() // 2))
+            
+            # Botones Volver y Confirmar en la parte inferior
+            btn_bottom_y = panel_y + panel_h - 55
+            btn_volver_x = panel_rect.centerx - 130
+            btn_confirmar_x = panel_rect.centerx + 10
+            
+            # Botón Volver
+            self.btn_volver_razones.update(btn_volver_x, btn_bottom_y, 120, 40)
+            is_hover_volver = self.btn_volver_razones.collidepoint(mx, my)
+            color_volver = (200, 90, 90) if is_hover_volver else (160, 70, 70)
+            pygame.draw.rect(surf, color_volver, self.btn_volver_razones, border_radius=6)
+            pygame.draw.rect(surf, (220, 120, 120), self.btn_volver_razones, 2, border_radius=6)
+            s = self.font_text.render("Volver", True, (255, 255, 255))
+            surf.blit(s, (self.btn_volver_razones.centerx - s.get_width() // 2, 
+                         self.btn_volver_razones.centery - s.get_height() // 2))
+            
+            # Botón Confirmar
+            self.btn_confirmar.update(btn_confirmar_x, btn_bottom_y, 120, 40)
+            is_hover_confirmar = self.btn_confirmar.collidepoint(mx, my)
+            color_confirmar = (90, 220, 90) if is_hover_confirmar else (70, 180, 70)
+            pygame.draw.rect(surf, color_confirmar, self.btn_confirmar, border_radius=6)
+            pygame.draw.rect(surf, (120, 240, 120), self.btn_confirmar, 2, border_radius=6)
+            s = self.font_buttons.render("Confirmar", True, (255, 255, 255))
+            surf.blit(s, (self.btn_confirmar.centerx - s.get_width() // 2, 
+                         self.btn_confirmar.centery - s.get_height() // 2))
+        
+        # NUEVO: Overlay de búsqueda web
+        if self.mode == "search_mode":
+            # Overlay semi-transparente
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 180))
+            surf.blit(overlay, (0, 0))
+            
+            # Mensaje de instrucción
+            msg = "Haz click en un elemento para investigarlo en internet"
+            msg_surf = self.font_buttons.render(msg, True, (255, 255, 100))
+            msg_x = SCREEN_W // 2 - msg_surf.get_width() // 2
+            msg_y = 50
+            surf.blit(msg_surf, (msg_x, msg_y))
+            
+            # Resaltar áreas clickeables con un borde brillante
+            if self.logo_rect:
+                # Dibujar borde pulsante alrededor del logo
+                border_color = (100, 255, 100)
+                pygame.draw.rect(surf, border_color, self.logo_rect.inflate(8, 8), 3, border_radius=4)
+            
+            # Resaltar el remitente (dominio)
+            if self.remitente_rect:
+                border_color = (100, 200, 255)
+                pygame.draw.rect(surf, border_color, self.remitente_rect.inflate(6, 6), 3, border_radius=4)
+            
+            # Resaltar áreas clicables específicas en el texto
+            for item in self.texto_rects:
+                if len(item) == 3:  # Nuevo formato con target específico
+                    rect, texto_linea, target = item
+                    # Mapeo de colores por tipo de área
+                    color_map = {
+                        "it_actualizacion": (255, 100, 100),  # Rojo
+                        "it_hora": (255, 200, 50),             # Dorado
+                        "it_validar": (255, 150, 255),         # Magenta
+                        "it_amenaza": (255, 100, 255),         # Rosa
+                        "it_sesion": (100, 200, 255),          # Azul claro
+                        "ms_inicio_sesion": (100, 255, 255),   # Cian
+                        "ms_caducado_password": (255, 180, 100), # Naranja
+                        "ms_suspension": (255, 80, 80),        # Rojo intenso
+                        "ms_url_sospechosa": (255, 50, 150),   # Rosa fuerte
+                        "loteria_ganado": (255, 215, 0),       # Dorado brillante
+                        "loteria_base_datos": (100, 255, 150), # Verde agua
+                        "loteria_monto": (255, 100, 200),      # Rosa chicle
+                        "loteria_tasa": (255, 50, 50),         # Rojo alerta
+                        "loteria_clic_pago": (255, 140, 0),    # Naranja oscuro
+                        "loteria_caduca": (255, 255, 100),     # Amarillo brillante
+                        "texto_premio": (255, 200, 50),        # Dorado
+                        "enlace": (255, 150, 100)              # Naranja
+                    }
+                    border_color = color_map.get(target, (255, 255, 255))
+                    pygame.draw.rect(surf, border_color, rect.inflate(4, 4), 2, border_radius=2)
+                else:  # Formato antiguo (compatibilidad)
+                    rect, texto_linea = item
+                    border_color = (255, 150, 100)
+                    pygame.draw.rect(surf, border_color, rect.inflate(4, 4), 2, border_radius=2)
+            
+            # Botón Volver en esquina inferior izquierda
+            mx, my = pygame.mouse.get_pos()
+            is_hover_volver = self.btn_volver_busqueda.collidepoint(mx, my)
+            color_volver = (200, 90, 90) if is_hover_volver else (160, 70, 70)
+            pygame.draw.rect(surf, color_volver, self.btn_volver_busqueda, border_radius=8)
+            pygame.draw.rect(surf, (220, 120, 120), self.btn_volver_busqueda, 2, border_radius=8)
+            volver_surf = self.font_text.render("Volver", True, (255, 255, 255))
+            volver_x = self.btn_volver_busqueda.centerx - volver_surf.get_width() // 2
+            volver_y = self.btn_volver_busqueda.centery - volver_surf.get_height() // 2
+            surf.blit(volver_surf, (volver_x, volver_y))
+            
+            # Mensaje temporal si existe
+            if self.mensaje_temporal:
+                mensaje_surf = self.font_buttons.render(self.mensaje_temporal, True, (255, 200, 100))
+                mensaje_x = SCREEN_W // 2 - mensaje_surf.get_width() // 2
+                mensaje_y = SCREEN_H // 2
+                # Fondo semi-transparente para el mensaje
+                mensaje_bg = pygame.Surface((mensaje_surf.get_width() + 40, mensaje_surf.get_height() + 20), pygame.SRCALPHA)
+                mensaje_bg.fill((0, 0, 0, 200))
+                surf.blit(mensaje_bg, (mensaje_x - 20, mensaje_y - 10))
+                surf.blit(mensaje_surf, (mensaje_x, mensaje_y))
+        
+        elif self.mode == "search_results":
+            # Overlay para mostrar resultados
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 190))
+            surf.blit(overlay, (0, 0))
+            
+            # Panel de resultados
+            panel_w = 600
+            panel_h = 400
+            panel_x = (SCREEN_W - panel_w) // 2
+            panel_y = (SCREEN_H - panel_h) // 2
+            result_panel = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+            
+            # Fondo del panel
+            pygame.draw.rect(surf, (25, 30, 40), result_panel, border_radius=12)
+            pygame.draw.rect(surf, (100, 150, 200), result_panel, 3, border_radius=12)
+            
+            # Área de contenido (con espacio para scrollbar)
+            content_area = pygame.Rect(panel_x + 20, panel_y + 20, panel_w - 60, panel_h - 100)
+            
+            # Crear superficie temporal para medir altura del contenido
+            temp_surf = pygame.Surface((content_area.w, 10000), pygame.SRCALPHA)
+            content_height = 0
+            
+            # Mostrar el resultado actual
+            if self.search_step < len(self.search_results):
+                resultado = self.search_results[self.search_step]
+                y_offset = 0
+                
+                if resultado["tipo"] == "texto":
+                    # Mostrar texto centrado
+                    texto = resultado["contenido"]
+                    lineas = wrap_ellipsis(texto, self.font_buttons, content_area.w, max_h=None)
+                    for linea in lineas:
+                        texto_surf = self.font_buttons.render(linea, True, (255, 255, 255))
+                        y_offset += self.font_buttons.get_height() + 10
+                    content_height = y_offset
+                
+                elif resultado["tipo"] == "lista":
+                    titulo = resultado.get("titulo", "")
+                    if titulo:
+                        y_offset += self.font_buttons.get_height() + 40
+                    else:
+                        y_offset += 20
+                    
+                    items = resultado.get("items", [])
+                    for item in items:
+                        item_lines = wrap_ellipsis(f"• {item}", self.font_text, content_area.w, max_h=None)
+                        for line in item_lines:
+                            y_offset += self.font_text.get_height() + 5
+                        y_offset += 7
+                    content_height = y_offset
+                
+                elif resultado["tipo"] == "imagenes":
+                    imagenes = resultado.get("imagenes", [])
+                    img_size = 160
+                    if len(imagenes) == 1:
+                        content_height = 100 + img_size + 50
+                    else:
+                        content_height = 80 + img_size + 50
+            
+            # Calcular scroll
+            self.search_scroll_max = max(0, content_height - content_area.h)
+            needs_scrollbar = self.search_scroll_max > 0
+            
+            # Ajustar área de contenido si hay scrollbar
+            if needs_scrollbar:
+                content_area.w -= 18
+            
+            # Crear scrollbar si es necesario
+            if needs_scrollbar:
+                scrollbar_x = result_panel.right - 30
+                scrollbar_y = result_panel.y + 20
+                scrollbar_h = result_panel.h - 100
+                self.search_scrollbar_rect = pygame.Rect(scrollbar_x, scrollbar_y, 12, scrollbar_h)
+                
+                # Calcular tamaño y posición del handle
+                visible_ratio = content_area.h / content_height
+                handle_h = max(30, int(scrollbar_h * visible_ratio))
+                scroll_ratio = self.search_scroll_offset / self.search_scroll_max if self.search_scroll_max > 0 else 0
+                handle_y = scrollbar_y + int((scrollbar_h - handle_h) * scroll_ratio)
+                self.search_scrollbar_handle = pygame.Rect(scrollbar_x, handle_y, 12, handle_h)
+                
+                # Dibujar scrollbar
+                pygame.draw.rect(surf, (40, 40, 60), self.search_scrollbar_rect, border_radius=6)
+                color_handle = (180, 180, 200) if self.search_scrollbar_dragging else (120, 120, 150)
+                pygame.draw.rect(surf, color_handle, self.search_scrollbar_handle, border_radius=6)
+            else:
+                self.search_scrollbar_rect = None
+                self.search_scrollbar_handle = None
+            
+            # Renderizar contenido con clipping y scroll
+            prev_clip = surf.get_clip()
+            surf.set_clip(content_area)
+            
+            if self.search_step < len(self.search_results):
+                resultado = self.search_results[self.search_step]
+                y_offset = content_area.y - self.search_scroll_offset
+                
+                if resultado["tipo"] == "texto":
+                    texto = resultado["contenido"]
+                    lineas = wrap_ellipsis(texto, self.font_buttons, content_area.w, max_h=None)
+                    for linea in lineas:
+                        texto_surf = self.font_buttons.render(linea, True, (255, 255, 255))
+                        texto_x = content_area.centerx - texto_surf.get_width() // 2
+                        surf.blit(texto_surf, (texto_x, y_offset))
+                        y_offset += self.font_buttons.get_height() + 10
+                
+                elif resultado["tipo"] == "lista":
+                    titulo = resultado.get("titulo", "")
+                    if titulo:
+                        titulo_surf = self.font_buttons.render(titulo, True, (255, 255, 100))
+                        titulo_x = content_area.centerx - titulo_surf.get_width() // 2
+                        surf.blit(titulo_surf, (titulo_x, y_offset))
+                        y_offset += self.font_buttons.get_height() + 40
+                    else:
+                        y_offset += 20
+                    
+                    items = resultado.get("items", [])
+                    for item in items:
+                        item_lines = wrap_ellipsis(f"• {item}", self.font_text, content_area.w, max_h=None)
+                        for line in item_lines:
+                            bullet_surf = self.font_text.render(line, True, (200, 255, 200))
+                            bullet_x = content_area.x
+                            surf.blit(bullet_surf, (bullet_x, y_offset))
+                            y_offset += self.font_text.get_height() + 5
+                        y_offset += 7
+                
+                elif resultado["tipo"] == "imagenes":
+                    # Mostrar imágenes (centrado si es solo 1, en fila si son varias)
+                    imagenes = resultado.get("imagenes", [])
+                    labels = resultado.get("labels", [])
+                    
+                    # Aumentar tamaño de imágenes para usar mejor el espacio
+                    img_size = 160
+                    spacing = 20
+                    
+                    # Si solo hay 1 imagen, centrarla en el panel
+                    if len(imagenes) == 1:
+                        img_x = content_area.centerx - img_size // 2
+                        img_y = y_offset + 80
+                        
+                        # Cargar y escalar imagen
+                        try:
+                            img = pygame.image.load(get_asset_path(imagenes[0])).convert_alpha()
+                            img = pygame.transform.scale(img, (img_size, img_size))
+                            surf.blit(img, (img_x, img_y))
+                            
+                            # Borde alrededor de la imagen
+                            img_rect = pygame.Rect(img_x, img_y, img_size, img_size)
+                            pygame.draw.rect(surf, (150, 150, 150), img_rect, 2, border_radius=4)
+                        except Exception:
+                            # Placeholder si no se puede cargar
+                            placeholder = pygame.Rect(img_x, img_y, img_size, img_size)
+                            pygame.draw.rect(surf, (60, 60, 80), placeholder, border_radius=4)
+                            pygame.draw.rect(surf, (150, 150, 150), placeholder, 2, border_radius=4)
+                        
+                        # Etiqueta debajo centrada
+                        if len(labels) > 0:
+                            label_surf = self.font_text.render(labels[0], True, (200, 200, 200))
+                            label_x = content_area.centerx - label_surf.get_width() // 2
+                            surf.blit(label_surf, (label_x, img_y + img_size + 10))
+                    else:
+                        # Múltiples imágenes en fila (como los 3 logos de Microsoft)
+                        total_width = img_size * len(imagenes) + spacing * (len(imagenes) - 1)
+                        start_x = content_area.centerx - total_width // 2
+                        img_y = y_offset + 60
+                        
+                        for i, img_path in enumerate(imagenes):
+                            img_x = start_x + i * (img_size + spacing)
+                            
+                            # Cargar y escalar imagen
+                            try:
+                                img = pygame.image.load(get_asset_path(img_path)).convert_alpha()
+                                img = pygame.transform.scale(img, (img_size, img_size))
+                                surf.blit(img, (img_x, img_y))
+                                
+                                # Borde alrededor de la imagen
+                                img_rect = pygame.Rect(img_x, img_y, img_size, img_size)
+                                pygame.draw.rect(surf, (150, 150, 150), img_rect, 2, border_radius=4)
+                            except Exception:
+                                # Placeholder si no se puede cargar
+                                placeholder = pygame.Rect(img_x, img_y, img_size, img_size)
+                                pygame.draw.rect(surf, (60, 60, 80), placeholder, border_radius=4)
+                                pygame.draw.rect(surf, (150, 150, 150), placeholder, 2, border_radius=4)
+                            
+                            # Etiqueta debajo
+                            if i < len(labels):
+                                label_surf = self.font_text.render(labels[i], True, (200, 200, 200))
+                                label_x = img_x + img_size // 2 - label_surf.get_width() // 2
+                                surf.blit(label_surf, (label_x, img_y + img_size + 10))
+            
+            # Restaurar clip
+            surf.set_clip(prev_clip)
+            
+            # Botones de navegación
+            mx, my = pygame.mouse.get_pos()
+            
+            # Determinar texto del botón según si hay más pasos
+            if self.search_step < len(self.search_results) - 1:
+                btn_text = "Continuar"
+            else:
+                btn_text = "Cerrar"
+            
+            # Botón continuar/cerrar
+            btn_x = result_panel.centerx - 75
+            btn_y = result_panel.bottom - 60
+            self.btn_continuar_busqueda.update(btn_x, btn_y, 150, 40)
+            
+            is_hover = self.btn_continuar_busqueda.collidepoint(mx, my)
+            btn_color = (90, 180, 255) if is_hover else (60, 140, 220)
+            pygame.draw.rect(surf, btn_color, self.btn_continuar_busqueda, border_radius=8)
+            pygame.draw.rect(surf, (120, 200, 255), self.btn_continuar_busqueda, 2, border_radius=8)
+            
+            btn_surf = self.font_buttons.render(btn_text, True, (255, 255, 255))
+            btn_surf_x = self.btn_continuar_busqueda.centerx - btn_surf.get_width() // 2
+            btn_surf_y = self.btn_continuar_busqueda.centery - btn_surf.get_height() // 2
+            surf.blit(btn_surf, (btn_surf_x, btn_surf_y))
 
 
 # =============================================================================
@@ -3836,7 +5293,14 @@ class Level2Screen(Screen):
             # INTEGRACIÓN: Guardar datos a Excel al ganar
             self.game.player_stats.complete_level()
             
-            # Cambiar a pantalla de video de victoria
+            # Verificar si ambos niveles (1 y 2) están completos para quiz final
+            completed = self.game.player_stats.completed_levels
+            if len(completed) >= 2:
+                # Ir al quiz final
+                self.game.change_screen(QuizScreen(self.game, mode='post', next_screen=MenuScreen(self.game)))
+                return
+            
+            # Si no hay quiz final, mostrar victoria normal
             mensaje = f"Virus eliminados: {self.viruses_cleaned}/{self.total_viruses}"
             self.game.change_screen(VictoryVideoScreen(self.game, mensaje))
             

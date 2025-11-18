@@ -333,6 +333,18 @@ class PlayerStats:
             "threats_missed": 0,
             "false_positives": 0
         }
+        # Niveles completados (éxito) para lógica de quiz final
+        self.completed_levels = set()
+        # === QUIZ (Nivel 1+2 combinado) ===
+        self.pre_quiz_score = 0
+        self.post_quiz_score = 0
+        self.quiz_total_questions = 12  # fijo (6 phishing + 6 malware)
+        self.quiz_improvement = 0.0
+        # Breakdown por categoría
+        self.pre_quiz_level1_correct = 0
+        self.pre_quiz_level2_correct = 0
+        self.post_quiz_level1_correct = 0
+        self.post_quiz_level2_correct = 0
     
     def set_current_level(self, level: int):
         """Cambia el nivel actual"""
@@ -426,6 +438,8 @@ class PlayerStats:
         
         # Limpiar errores temporales
         self.mistake_log.clear()
+        # Marcar nivel completado (éxito)
+        self.completed_levels.add(self.current_level)
     
     def get_accuracy(self) -> float:
         """Calcula precisión de la sesión actual (0-100)"""
@@ -464,6 +478,54 @@ class PlayerStats:
             "threats_detected": 0,
             "threats_missed": 0,
             "false_positives": 0
+        }
+
+    # ================== QUIZ MÉTODOS ==================
+    def record_quiz_score(self, mode: str, total_correct: int, cat_breakdown: dict):
+        """Registra resultado del quiz.
+        mode: 'pre' | 'post' | 'final' (final se trata como post)
+        cat_breakdown: { 'level1': int, 'level2': int }
+        """
+        if mode == 'pre':
+            self.pre_quiz_score = total_correct
+            self.pre_quiz_level1_correct = cat_breakdown.get('level1', 0)
+            self.pre_quiz_level2_correct = cat_breakdown.get('level2', 0)
+        elif mode in ('post','final'):
+            self.post_quiz_score = total_correct
+            self.post_quiz_level1_correct = cat_breakdown.get('level1', 0)
+            self.post_quiz_level2_correct = cat_breakdown.get('level2', 0)
+            # Calcular mejora porcentual respecto a total de preguntas
+            if self.quiz_total_questions > 0:
+                pre_pct = (self.pre_quiz_score / self.quiz_total_questions) * 100
+                post_pct = (self.post_quiz_score / self.quiz_total_questions) * 100
+                self.quiz_improvement = post_pct - pre_pct
+            else:
+                self.quiz_improvement = 0.0
+            # Registrar en mistake_log para telemetría agregada
+            self.mistake_log.add_mistake(
+                level=self.current_level,
+                mistake_type="quiz_mejora",
+                description="Resultado quiz final registrado" if mode=='final' else "Resultado post-quiz registrado",
+                mistake_details={
+                    "pre_total": self.pre_quiz_score,
+                    "post_total": self.post_quiz_score,
+                    "mejora_pct": round(self.quiz_improvement, 2),
+                    "pre_lvl1": self.pre_quiz_level1_correct,
+                    "pre_lvl2": self.pre_quiz_level2_correct,
+                    "post_lvl1": self.post_quiz_level1_correct,
+                    "post_lvl2": self.post_quiz_level2_correct
+                }
+            )
+
+    def get_quiz_summary(self) -> dict:
+        return {
+            "pre_total": self.pre_quiz_score,
+            "post_total": self.post_quiz_score,
+            "mejora_pct": round(self.quiz_improvement, 2),
+            "pre_lvl1": self.pre_quiz_level1_correct,
+            "pre_lvl2": self.pre_quiz_level2_correct,
+            "post_lvl1": self.post_quiz_level1_correct,
+            "post_lvl2": self.post_quiz_level2_correct
         }
 
 
