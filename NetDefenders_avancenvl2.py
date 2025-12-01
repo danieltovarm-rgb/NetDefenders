@@ -1166,13 +1166,18 @@ class Level1Screen(BaseLevelScreen):
     def __init__(self, game):
         # --- NARRATIVA DEL TUTOR MEJORADA ---
         narrative_lines = [
-            "Tutor: Conectando a la Red de Simulación... ¿Listo, analista?",
-            "Tutor: Escenario: Eres el analista de seguridad principal de 'Synergy Corp'. Tu 'Integridad de Red' es tu vida.",
-            "Tutor: Detectamos un intruso (míralo). Está lanzando un ataque de phishing para robar credenciales y dañar los sistemas.",
-            "Tutor: Tu trabajo: Analiza la bandeja de entrada. Reporta lo malicioso para dañar al hacker. Responde o elimina lo legítimo.",
-            "Tutor: ¡Cuidado! Si respondes a un correo falso o reportas uno legítimo, ¡pierdes integridad de red!",
-            "Tutor: Revisa siempre 3 cosas: El **Dominio** (quién envía), el **Texto** (qué pide) y el **Logo** (si es auténtico).",
-            "Tutor: Soy tu 'Blue Team Lead' (Jefe de Defensa). Te guiaré si fallas. ¡Iniciando simulación... ya!"
+            "Tutor: Bienvenido al Sistema de Defensa de Synergy Corp, analista.",
+            "Tutor: Eres el Analista de Seguridad principal. Tu vida es la 'Integridad de Red' que comienza en 100 puntos.",
+            "Tutor: Tu enemigo es el hacker que cuenta con 100 puntos de vida. Ganas si reduces su vida a 0 o tienes más puntos que él al final.",
+            "Tutor: Recibirás una bandeja con correos legítimos y phishing. Haz clic en uno para abrirlo y analizarlo.",
+            "Tutor: Debes revisar siempre tres aspectos clave:\n- El DOMINIO del remitente\n- El TEXTO del mensaje\n- El LOGO de la empresa",
+            "Tutor: Tienes tres acciones disponibles:\nRESPONDER: Para correos legítimos de compañeros o externos de confianza.\nELIMINAR: Causa daño menor al hacker si es phishing.\nREPORTAR: Causa el máximo daño (25 puntos) si detectas phishing correctamente.",
+            "Tutor: También cuentas con BUSCAR EN WEB.\nHaz clic en ese botón dentro del correo y selecciona qué investigar: logo, dominio o texto.\nObtendrás información que te ayudará a decidir si es legítimo o malicioso.",
+            "Tutor: Ten cuidado con los errores:\nSi RESPONDES a phishing perderás entre 15 y 30 puntos.\nSi REPORTAS un correo legítimo perderás 20 puntos.\nSi ELIMINAS uno legítimo perderás 10 puntos.",
+            "Tutor: Cuando REPORTES o ELIMINES, debes marcar las razones por las que sospechas:\n- Logo\n- Dominio\n- Texto",
+            "Tutor: Sistema de puntuación por razones:\nPor cada razón CORRECTA causarás 2 puntos extra de daño al hacker.\nSi marcas razones INCORRECTAS, perderás entre 2 y 3 puntos de tu integridad.",
+            "Tutor: Recuerda, solo apareceré 3 veces durante la simulación para ayudarte si cometes errores.",
+            "Tutor: ¡Iniciando simulación... ya!"
         ]
         super().__init__(game, narrative_lines)
         
@@ -3963,7 +3968,7 @@ class GestorMensajesEducativos:
         # Mensajes de error puntuales
         self.errores = {
             'limpiar_seguro': {
-                'titulo': "⚠️ Error: Archivo seguro eliminado",
+                'titulo': "Error: Archivo seguro eliminado",
                 'bullets': [
                     "Confirma extensión real y horario de modificación.",
                     "No borres archivos de sistema sin evidencia clara."
@@ -3971,7 +3976,7 @@ class GestorMensajesEducativos:
                 'sabias_que': "Eliminar archivos del sistema puede causar inestabilidad. Verifica dos veces antes de actuar."
             },
             'cuarentena_seguro': {
-                'titulo': "⚠️ Falso positivo",
+                'titulo': "Falso positivo",
                 'bullets': [
                     "Este archivo era seguro.",
                     "Valida el tipo de archivo y su ubicación antes de aislar."
@@ -3984,7 +3989,7 @@ class GestorMensajesEducativos:
         """Obtiene el tip educativo para cuando se activa un síntoma"""
         datos = self.mensajes.get(tipo_malware, {})
         return {
-            'titulo': f"🔍 Detectado: {tipo_malware.capitalize()}",
+            'titulo': f"Detectado: {tipo_malware.capitalize()}",
             'bullets': datos.get('tip_bullets', []),
             'sabias_que': datos.get('sabias_que', '')
         }
@@ -3993,7 +3998,7 @@ class GestorMensajesEducativos:
         """Obtiene el refuerzo educativo tras limpiar/aislar"""
         datos = self.mensajes.get(tipo_malware, {})
         return {
-            'titulo': f"✅ Bien hecho",
+            'titulo': f"Bien hecho",
             'bullets': datos.get('refuerzo_bullets', []),
             'sabias_que': f"Síntoma '{datos.get('sintoma', '')}' desactivado correctamente."
         }
@@ -4001,7 +4006,7 @@ class GestorMensajesEducativos:
     def obtener_error(self, tipo_error):
         """Obtiene mensaje de error educativo"""
         return self.errores.get(tipo_error, {
-            'titulo': '⚠️ Error',
+            'titulo': 'Error',
             'bullets': ['Verifica antes de actuar.'],
             'sabias_que': ''
         })
@@ -4550,9 +4555,7 @@ class Level2Screen(Screen):
                 grid_index = num_normal_doors + i
                 archivo.rect = rect_at(grid_index)
                 
-                # Activar síntomas de archivos infectados
-                if archivo.es_infectado and archivo.tipo_virus:
-                    self.gestor_virus.activar_sintoma(archivo.tipo_virus)
+                # NO activar síntomas al inicio - se activarán al entrar a la carpeta
 
         self.paused = False
 
@@ -4574,9 +4577,23 @@ class Level2Screen(Screen):
         self.gestor_mensajes = GestorMensajesEducativos()
         self.archivos_con_quiz = set()  # IDs de archivos que ya tuvieron quiz
         self.sintomas_tip_mostrado = set()  # Síntomas que ya mostraron tip
+        
+        # Control de overlay de ransomware
+        self.ransomware_overlay_oculto = False
+        self.ransomware_overlay_timer = 0
+        
+        # Control de teclas fantasma (spyware)
+        self.teclas_fantasma_timer = 0
+        self.teclas_fantasma_caracteres = []
+        self.keylog_texto = ""
+        self.keylog_timer = 0
+        self.keylog_buffer = ["a", "s", "d", "w", "space", "enter", "ctrl", "1", "2", "3", "click"]
 
         # Actualizar panel de archivos inicial
         self.actualizar_panel_archivos()
+        
+        # SISTEMA EDUCATIVO: Activar síntomas del directorio inicial al comenzar el juego
+        self.activar_sintomas_directorio_actual()
 
     # --- Soporte de imagen para puertas ---
     def _get_image_scaled(self, image_path: str, side: int) -> pygame.Surface | None:
@@ -4670,6 +4687,11 @@ class Level2Screen(Screen):
             self.show_message("Ya hay una acción en progreso...")
             return
 
+        # Verificar si el archivo ya fue eliminado
+        if archivo and hasattr(archivo, 'eliminado') and archivo.eliminado:
+            self.show_message("Este archivo ya fue eliminado")
+            return
+
         costo = self.costos_acciones.get(accion, 0)
         if self.recursos < costo:
             self.show_message("¡Recursos insuficientes!")
@@ -4682,6 +4704,7 @@ class Level2Screen(Screen):
         # Aplicar costo de recursos inmediatamente
         if costo > 0:
             self.recursos -= costo
+            self.level2_manager.resource_bar.consume(costo)
             self.show_message(f"Recursos: -{costo} | {self.recursos} restantes")
 
     def actualizar_acciones(self, dt):
@@ -4780,14 +4803,14 @@ class Level2Screen(Screen):
             if es_correcto:
                 # +4 recursos
                 self.recursos += 4
-                self.level2_manager.resource_bar.add(4)
+                self.level2_manager.resource_bar.restore(4)
                 
                 bullets = [
-                    f"✅ Correcto: {quiz_data['opciones'][correcta]}",
+                    f"Correcto: {quiz_data['opciones'][correcta]}",
                     quiz_data['tip'],
                     f"+4 recursos (total: {self.recursos})"
                 ]
-                titulo = "🎯 ¡Bien hecho!"
+                titulo = "¡Bien hecho!"
                 
                 # Telemetría
                 self.game.player_stats.mistake_log.add_mistake(
@@ -4806,11 +4829,11 @@ class Level2Screen(Screen):
                 self.level2_manager.resource_bar.consume(2)
                 
                 bullets = [
-                    f"❌ Incorrecto. Correcta: {quiz_data['opciones'][correcta]}",
+                    f"Incorrecto. Correcta: {quiz_data['opciones'][correcta]}",
                     quiz_data['tip'],
                     f"-2 recursos (total: {self.recursos})"
                 ]
-                titulo = "📚 Aprende de esto"
+                titulo = "Aprende de esto"
                 
                 # Telemetría
                 self.game.player_stats.mistake_log.add_mistake(
@@ -4842,6 +4865,17 @@ class Level2Screen(Screen):
         import random
         opcion_elegida = random.randint(0, 2)  # Simula elección del jugador
         responder_quiz(opcion_elegida)
+    
+    def activar_sintomas_directorio_actual(self):
+        """Activa síntomas de virus en el directorio actual al entrar por primera vez"""
+        if self.current_directory in self.files_in_room:
+            for archivo in self.files_in_room[self.current_directory]:
+                if archivo.es_infectado and archivo.tipo_virus and not archivo.eliminado:
+                    # Activar síntoma si aún no está activo
+                    sintoma = self.gestor_virus.tipos_virus.get(archivo.tipo_virus, {}).get('sintoma')
+                    if sintoma and not self.gestor_virus.sintomas_activos.get(sintoma, False):
+                        self.gestor_virus.activar_sintoma(archivo.tipo_virus)
+                        # El tip se mostrará automáticamente en update() cuando detecte el síntoma activo
     
     def mostrar_tip_sintoma(self, tipo_malware):
         """Muestra un tip educativo cuando se detecta un síntoma por primera vez"""
@@ -5004,6 +5038,10 @@ class Level2Screen(Screen):
                     
                 # SISTEMA EDUCATIVO: Mostrar mensaje de error
                 self.mostrar_error_educativo('limpiar_seguro')
+            
+            # Deseleccionar archivo y actualizar panel
+            self.archivo_seleccionado = None
+            self.actualizar_panel_archivos()
 
     def manejar_evento_cuarentena(self, event):
         """Maneja el evento de temporizador para desactivar síntomas"""
@@ -5061,6 +5099,24 @@ class Level2Screen(Screen):
         # SISTEMA EDUCATIVO: Dar prioridad a eventos del overlay
         if self.overlay_educativo.handle_event(event):
             return  # El overlay consumió el evento
+        
+        # Detectar click en botón X del overlay de ransomware
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.gestor_virus.sintomas_activos["pantalla_bloqueada"] and not self.ransomware_overlay_oculto:
+                # Calcular posición del botón X
+                panel_w = 600
+                panel_h = 400
+                panel_x = (SCREEN_W - panel_w) // 2
+                panel_y = (SCREEN_H - panel_h) // 2
+                
+                boton_x_size = 30
+                boton_x_rect = pygame.Rect(panel_x + panel_w - boton_x_size - 10, panel_y + 10, boton_x_size, boton_x_size)
+                
+                if boton_x_rect.collidepoint(event.pos):
+                    # Ocultar el overlay por 7 segundos
+                    self.ransomware_overlay_oculto = True
+                    self.ransomware_overlay_timer = 7000  # 7000 ms = 7 segundos
+                    return  # Consumir el evento
         
         if event.type == pygame.USEREVENT + 1:
             self.manejar_evento_cuarentena(event)
@@ -5224,6 +5280,42 @@ class Level2Screen(Screen):
         # SISTEMA EDUCATIVO: Actualizar overlay (cooldowns)
         self.overlay_educativo.update(dt)
         
+        # Control de overlay de ransomware oculto temporalmente
+        if self.ransomware_overlay_oculto:
+            self.ransomware_overlay_timer -= dt
+            if self.ransomware_overlay_timer <= 0:
+                self.ransomware_overlay_oculto = False
+                self.ransomware_overlay_timer = 0
+        
+        # Actualizar teclas fantasma (spyware)
+        if self.gestor_virus.sintomas_activos["teclas_fantasma"]:
+            # Actualizar caracteres flotantes cada 400ms
+            self.teclas_fantasma_timer += dt
+            if self.teclas_fantasma_timer >= 400:
+                self.teclas_fantasma_timer = 0
+                # Generar nuevos caracteres aleatorios
+                self.teclas_fantasma_caracteres = []
+                caracteres_pool = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?/~"
+                colores = [(0, 255, 100), (255, 255, 0), (255, 100, 100)]
+                
+                for _ in range(random.randint(8, 12)):
+                    char = random.choice(caracteres_pool)
+                    x = random.randint(50, SCREEN_W - 50)
+                    y = random.randint(80, SCREEN_H - 80)
+                    color = random.choice(colores)
+                    self.teclas_fantasma_caracteres.append((char, x, y, color))
+            
+            # Actualizar keylogger simulado cada 800ms
+            self.keylog_timer += dt
+            if self.keylog_timer >= 800:
+                self.keylog_timer = 0
+                # Agregar nueva tecla al keylog
+                nueva_tecla = random.choice(self.keylog_buffer)
+                self.keylog_texto += nueva_tecla + ", "
+                # Limitar longitud
+                if len(self.keylog_texto) > 40:
+                    self.keylog_texto = self.keylog_texto[-40:]
+        
         # SISTEMA EDUCATIVO: Mostrar tip cuando un síntoma se activa
         for sintoma, activo in self.gestor_virus.sintomas_activos.items():
             if activo and sintoma not in self.sintomas_tip_mostrado:
@@ -5251,6 +5343,10 @@ class Level2Screen(Screen):
                 self.in_transition = False
                 self.current_directory = self.transition_target
                 self.actualizar_panel_archivos()
+                
+                # SISTEMA EDUCATIVO: Activar síntomas de virus en el directorio actual
+                self.activar_sintomas_directorio_actual()
+                
                 print(f"DEBUG: Llegué a {self.current_directory}")  # Para debug
             return
         # MODO MOUSE-ONLY: actualizar resaltados por hover
@@ -5341,6 +5437,7 @@ class Level2Screen(Screen):
     def render(self, surf):
         surf.fill((0, 0, 0))
 
+        # SÍNTOMA: Ralentización (Miner)
         if self.gestor_virus.sintomas_activos["ralentizacion"]:
             if pygame.time.get_ticks() % 1000 < 500:
                 surf.fill((30, 30, 60), special_flags=pygame.BLEND_RGB_ADD)
@@ -5670,6 +5767,249 @@ class Level2Screen(Screen):
             pausa_text = self.fonts["title"].render("PAUSA", True, (255, 255, 255))
             surf.blit(pausa_text,
                       (SCREEN_W // 2 - pausa_text.get_width() // 2, SCREEN_H // 2 - pausa_text.get_height() // 2))
+        
+        # SÍNTOMA: Pop-ups (Adware) - Renderizar al final para que aparezcan sobre toda la interfaz
+        if self.gestor_virus.sintomas_activos["popups"]:
+            # Generar 2-4 pop-ups molestos en posiciones aleatorias
+            tiempo_actual = pygame.time.get_ticks()
+            random.seed(tiempo_actual // 2000)  # Cambiar cada 2 segundos
+            
+            num_popups = random.randint(2, 4)
+            for i in range(num_popups):
+                # Posiciones semi-aleatorias pero consistentes
+                popup_x = 50 + (i * 200) + random.randint(-30, 30)
+                popup_y = 100 + random.randint(0, 300)
+                popup_w = 180
+                popup_h = 100
+                
+                popup_rect = pygame.Rect(popup_x, popup_y, popup_w, popup_h)
+                
+                # Fondo del pop-up (colores llamativos)
+                colores_fondo = [(255, 50, 50), (255, 150, 0), (255, 255, 0), (255, 0, 255)]
+                color_popup = colores_fondo[i % len(colores_fondo)]
+                pygame.draw.rect(surf, color_popup, popup_rect, border_radius=8)
+                pygame.draw.rect(surf, (255, 255, 255), popup_rect, 3, border_radius=8)
+                
+                # Botón X (cerrar) en esquina superior derecha
+                close_btn = pygame.Rect(popup_rect.right - 25, popup_rect.top + 5, 20, 20)
+                pygame.draw.rect(surf, (200, 0, 0), close_btn, border_radius=3)
+                x_text = self.fonts["small"].render("X", True, (255, 255, 255))
+                surf.blit(x_text, (close_btn.centerx - x_text.get_width() // 2, 
+                                  close_btn.centery - x_text.get_height() // 2))
+                
+                # Textos del anuncio
+                textos_anuncio = [
+                    ["¡GANASTE!", "¡Haz clic aquí!"],
+                    ["DESCARGA", "GRATIS"],
+                    ["¡OFERTA!", "50% OFF"],
+                    ["¡VIRUS!", "Escanea ahora"]
+                ]
+                texto_popup = textos_anuncio[i % len(textos_anuncio)]
+                
+                # Título del pop-up
+                titulo_popup = self.fonts["normal"].render(texto_popup[0], True, (0, 0, 0))
+                surf.blit(titulo_popup, (popup_rect.centerx - titulo_popup.get_width() // 2, 
+                                        popup_rect.y + 15))
+                
+                # Subtítulo
+                subtitulo = self.fonts["small"].render(texto_popup[1], True, (50, 50, 50))
+                surf.blit(subtitulo, (popup_rect.centerx - subtitulo.get_width() // 2, 
+                                     popup_rect.y + 45))
+                
+                # Botón "Clic aquí"
+                boton_rect = pygame.Rect(popup_rect.centerx - 60, popup_rect.bottom - 35, 120, 25)
+                pygame.draw.rect(surf, (0, 200, 0), boton_rect, border_radius=5)
+                pygame.draw.rect(surf, (255, 255, 255), boton_rect, 2, border_radius=5)
+                boton_text = self.fonts["small"].render("¡Clic aquí!", True, (255, 255, 255))
+                surf.blit(boton_text, (boton_rect.centerx - boton_text.get_width() // 2,
+                                      boton_rect.centery - boton_text.get_height() // 2))
+        
+        # Mostrar contador cuando el overlay de ransomware está temporalmente oculto
+        if self.gestor_virus.sintomas_activos["pantalla_bloqueada"] and self.ransomware_overlay_oculto:
+            # Calcular segundos restantes
+            segundos_restantes = int(self.ransomware_overlay_timer / 1000) + 1  # +1 para redondear hacia arriba
+            
+            # Panel en la parte inferior del panel de herramientas (lado derecho)
+            tools_rect = self.hud_rects["right_tools"]
+            timer_w = tools_rect.width - 20
+            timer_h = 60
+            timer_x = tools_rect.x + 10
+            timer_y = tools_rect.bottom - timer_h - 10
+            timer_rect = pygame.Rect(timer_x, timer_y, timer_w, timer_h)
+            
+            # Fondo semi-transparente (rojo oscuro parpadeante)
+            timer_bg = pygame.Surface((timer_w, timer_h), pygame.SRCALPHA)
+            if pygame.time.get_ticks() % 1000 < 500:
+                timer_bg.fill((100, 0, 0, 200))
+            else:
+                timer_bg.fill((150, 0, 0, 220))
+            surf.blit(timer_bg, (timer_x, timer_y))
+            
+            # Borde rojo
+            pygame.draw.rect(surf, (255, 0, 0), timer_rect, 3, border_radius=8)
+            
+            # Texto de advertencia
+            warning_text = self.fonts["small"].render("Bloqueo en:", True, (255, 255, 255))
+            surf.blit(warning_text, (timer_x + 10, timer_y + 8))
+            
+            # Contador de segundos (grande y parpadeante)
+            if pygame.time.get_ticks() % 600 < 300:
+                color_timer = (255, 50, 50)
+            else:
+                color_timer = (255, 150, 150)
+            
+            timer_text = self.fonts["title"].render(f"{segundos_restantes}s", True, color_timer)
+            surf.blit(timer_text, (timer_rect.centerx - timer_text.get_width() // 2, timer_y + 30))
+        
+        # SÍNTOMA: Pantalla Bloqueada (Ransomware)
+        if self.gestor_virus.sintomas_activos["pantalla_bloqueada"] and not self.ransomware_overlay_oculto:
+            # Overlay rojo semi-transparente sobre toda la pantalla
+            overlay_ransomware = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay_ransomware.fill((150, 0, 0, 180))  # Rojo oscuro con transparencia
+            surf.blit(overlay_ransomware, (0, 0))
+            
+            # Panel central de "rescate"
+            panel_w = 600
+            panel_h = 400
+            panel_x = (SCREEN_W - panel_w) // 2
+            panel_y = (SCREEN_H - panel_h) // 2
+            panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+            
+            # Fondo del panel (negro con borde rojo)
+            pygame.draw.rect(surf, (20, 0, 0), panel_rect, border_radius=10)
+            pygame.draw.rect(surf, (255, 0, 0), panel_rect, 5, border_radius=10)
+            
+            # Icono de advertencia (triángulo con !)
+            icono_size = 60
+            icono_x = panel_rect.centerx
+            icono_y = panel_y + 40
+            
+            # Triángulo de advertencia
+            triangulo_puntos = [
+                (icono_x, icono_y - icono_size // 2),  # Arriba
+                (icono_x - icono_size // 2, icono_y + icono_size // 2),  # Abajo izquierda
+                (icono_x + icono_size // 2, icono_y + icono_size // 2)   # Abajo derecha
+            ]
+            pygame.draw.polygon(surf, (255, 255, 0), triangulo_puntos)
+            pygame.draw.polygon(surf, (255, 0, 0), triangulo_puntos, 3)
+            
+            # Signo de exclamación dentro del triángulo
+            exclamacion = self.fonts["title"].render("!", True, (255, 0, 0))
+            surf.blit(exclamacion, (icono_x - exclamacion.get_width() // 2, 
+                                   icono_y - exclamacion.get_height() // 2))
+            
+            # Título principal
+            titulo_y = icono_y + 60
+            titulo1 = self.fonts["title"].render("¡SISTEMA BLOQUEADO!", True, (255, 0, 0))
+            surf.blit(titulo1, (panel_rect.centerx - titulo1.get_width() // 2, titulo_y))
+            
+            titulo2 = self.fonts["normal"].render("Tus archivos han sido cifrados", True, (255, 255, 255))
+            surf.blit(titulo2, (panel_rect.centerx - titulo2.get_width() // 2, titulo_y + 40))
+            
+            # Mensaje de rescate
+            mensaje_y = titulo_y + 90
+            mensajes = [
+                "Para recuperar el acceso a tus archivos,",
+                "debes pagar 500 BitCoins a la siguiente dirección:",
+                "",
+                "1A2b3C4d5E6f7G8h9I0j...",
+                "",
+                "TIEMPO RESTANTE: 23:47:15"
+            ]
+            
+            for i, linea in enumerate(mensajes):
+                if linea == "1A2b3C4d5E6f7G8h9I0j...":
+                    # Dirección de Bitcoin en color diferente
+                    texto = self.fonts["small"].render(linea, True, (255, 255, 0))
+                elif "TIEMPO" in linea:
+                    # Temporizador en rojo parpadeante
+                    if pygame.time.get_ticks() % 1000 < 500:
+                        texto = self.fonts["normal"].render(linea, True, (255, 50, 50))
+                    else:
+                        texto = self.fonts["normal"].render(linea, True, (255, 150, 150))
+                else:
+                    texto = self.fonts["small"].render(linea, True, (200, 200, 200))
+                
+                surf.blit(texto, (panel_rect.centerx - texto.get_width() // 2, mensaje_y + i * 25))
+            
+            # Botón falso de "Pagar Rescate"
+            boton_pagar_w = 200
+            boton_pagar_h = 40
+            boton_pagar_x = panel_rect.centerx - boton_pagar_w // 2
+            boton_pagar_y = panel_rect.bottom - 60
+            boton_pagar_rect = pygame.Rect(boton_pagar_x, boton_pagar_y, boton_pagar_w, boton_pagar_h)
+            
+            pygame.draw.rect(surf, (100, 0, 0), boton_pagar_rect, border_radius=8)
+            pygame.draw.rect(surf, (255, 0, 0), boton_pagar_rect, 3, border_radius=8)
+            
+            boton_texto = self.fonts["normal"].render("PAGAR RESCATE", True, (255, 255, 255))
+            surf.blit(boton_texto, (boton_pagar_rect.centerx - boton_texto.get_width() // 2,
+                                   boton_pagar_rect.centery - boton_texto.get_height() // 2))
+            
+            # Botón X para minimizar temporalmente (esquina superior derecha del panel)
+            boton_x_size = 30
+            boton_x_rect = pygame.Rect(panel_rect.right - boton_x_size - 10, panel_rect.top + 10, boton_x_size, boton_x_size)
+            
+            # Detectar hover
+            mx, my = pygame.mouse.get_pos()
+            color_x = (255, 100, 100) if boton_x_rect.collidepoint(mx, my) else (200, 0, 0)
+            
+            pygame.draw.rect(surf, color_x, boton_x_rect, border_radius=5)
+            pygame.draw.rect(surf, (255, 255, 255), boton_x_rect, 2, border_radius=5)
+            
+            # Dibujar X
+            x_text = self.fonts["title"].render("X", True, (255, 255, 255))
+            surf.blit(x_text, (boton_x_rect.centerx - x_text.get_width() // 2,
+                              boton_x_rect.centery - x_text.get_height() // 2))
+            
+            # Hint pequeño debajo del botón X
+            hint_text = self.fonts["small"].render("Minimizar (7 seg)", True, (180, 180, 180))
+            surf.blit(hint_text, (boton_x_rect.centerx - hint_text.get_width() // 2,
+                                 boton_x_rect.bottom + 5))
+        
+        # SÍNTOMA: Teclas Fantasma (Spyware)
+        if self.gestor_virus.sintomas_activos["teclas_fantasma"]:
+            # 1. Caracteres flotantes aleatorios dispersos por la pantalla
+            for char, x, y, color in self.teclas_fantasma_caracteres:
+                # Renderizar con semi-transparencia
+                char_surf = self.fonts["normal"].render(char, True, color)
+                char_surf.set_alpha(180)  # Semi-transparente para no obstruir demasiado
+                surf.blit(char_surf, (x, y))
+            
+            # 2. Cuadro de keylogger en esquina superior derecha
+            keylog_w = 280
+            keylog_h = 50
+            keylog_x = SCREEN_W - keylog_w - 20
+            keylog_y = 60  # Debajo del indicador de síntomas
+            keylog_rect = pygame.Rect(keylog_x, keylog_y, keylog_w, keylog_h)
+            
+            # Fondo semi-transparente rojo oscuro
+            keylog_bg = pygame.Surface((keylog_w, keylog_h), pygame.SRCALPHA)
+            keylog_bg.fill((50, 0, 0, 200))
+            surf.blit(keylog_bg, (keylog_x, keylog_y))
+            
+            # Borde rojo parpadeante
+            if pygame.time.get_ticks() % 800 < 400:
+                border_color = (255, 0, 0)
+            else:
+                border_color = (150, 0, 0)
+            pygame.draw.rect(surf, border_color, keylog_rect, 2, border_radius=5)
+            
+            # Título del keylogger
+            titulo_keylog = self.fonts["small"].render("KEYLOG ACTIVE:", True, (255, 50, 50))
+            surf.blit(titulo_keylog, (keylog_x + 8, keylog_y + 5))
+            
+            # Texto capturado (con efecto de escritura)
+            texto_capturado = self.fonts["small"].render(self.keylog_texto, True, (0, 255, 100))
+            # Truncar si es muy largo
+            if texto_capturado.get_width() > keylog_w - 16:
+                # Mostrar solo los últimos caracteres que quepan
+                texto_display = self.keylog_texto
+                while self.fonts["small"].render(texto_display, True, (0, 255, 100)).get_width() > keylog_w - 16:
+                    texto_display = texto_display[1:]
+                texto_capturado = self.fonts["small"].render(texto_display, True, (0, 255, 100))
+            
+            surf.blit(texto_capturado, (keylog_x + 8, keylog_y + 25))
         
         # SISTEMA EDUCATIVO: Renderizar overlay educativo al final (sobre todo)
         self.overlay_educativo.render(surf)
