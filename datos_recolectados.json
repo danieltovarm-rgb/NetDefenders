@@ -454,5 +454,339 @@
     },
     "fecha_hora": "2025-12-03 16:01:31",
     "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "correo_legitimo_identificado",
+    "descripcion": "Correo legítimo procesado correctamente",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 16:40:48",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 16:40:50",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 16:40:52",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 16:40:53",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "correo_legitimo_identificado",
+    "descripcion": "Correo legítimo procesado correctamente",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 16:40:55",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 16:40:55",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:38:44",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:38:53",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 16:38:59",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:39:09",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 16:39:12",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "amenaza_detectada_correctamente",
+    "descripcion": "Amenaza identificada y reportada correctamente",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:42:07",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "archivo_limpio_eliminado",
+    "descripcion": "Error: autoexec.bat era un archivo limpio y fue eliminado",
+    "detalles": {
+      "nombre_archivo": "autoexec.bat",
+      "accion": "limpiar",
+      "error": true
+    },
+    "fecha_hora": "2025-12-03 16:42:17",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "archivo_limpio_eliminado",
+    "descripcion": "Error: autoexec.bat era un archivo limpio y fue eliminado",
+    "detalles": {
+      "nombre_archivo": "autoexec.bat",
+      "accion": "limpiar",
+      "error": true
+    },
+    "fecha_hora": "2025-12-03 16:42:34",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "archivo_limpio_eliminado",
+    "descripcion": "Error: config.sys era un archivo limpio y fue eliminado",
+    "detalles": {
+      "nombre_archivo": "config.sys",
+      "accion": "limpiar",
+      "error": true
+    },
+    "fecha_hora": "2025-12-03 16:42:41",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "archivo_limpio_eliminado",
+    "descripcion": "Error: readme.txt era un archivo limpio y fue eliminado",
+    "detalles": {
+      "nombre_archivo": "readme.txt",
+      "accion": "limpiar",
+      "error": true
+    },
+    "fecha_hora": "2025-12-03 16:42:45",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "archivo_limpio_eliminado",
+    "descripcion": "Error: movie.mp4 era un archivo limpio y fue eliminado",
+    "detalles": {
+      "nombre_archivo": "movie.mp4",
+      "accion": "limpiar",
+      "error": true
+    },
+    "fecha_hora": "2025-12-03 16:42:54",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus adware eliminado de Free_Game.exe",
+    "detalles": {
+      "nombre_archivo": "Free_Game.exe",
+      "tipo_virus": "adware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 16:42:59",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus miner eliminado de crypto_miner.exe",
+    "detalles": {
+      "nombre_archivo": "crypto_miner.exe",
+      "tipo_virus": "miner",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 16:43:03",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "archivo_limpio_eliminado",
+    "descripcion": "Error: GIMP_Installer.exe era un archivo limpio y fue eliminado",
+    "detalles": {
+      "nombre_archivo": "GIMP_Installer.exe",
+      "accion": "limpiar",
+      "error": true
+    },
+    "fecha_hora": "2025-12-03 16:43:08",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus ransomware eliminado de x_virus.exe",
+    "detalles": {
+      "nombre_archivo": "x_virus.exe",
+      "tipo_virus": "ransomware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 16:43:27",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus spyware eliminado de spy_tool.exe",
+    "detalles": {
+      "nombre_archivo": "spy_tool.exe",
+      "tipo_virus": "spyware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 16:43:32",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "archivo_limpio_eliminado",
+    "descripcion": "Error: user32.dll era un archivo limpio y fue eliminado",
+    "detalles": {
+      "nombre_archivo": "user32.dll",
+      "accion": "limpiar",
+      "error": true
+    },
+    "fecha_hora": "2025-12-03 16:43:36",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "recursos_agotados",
+    "descripcion": "Derrota: Se agotaron los recursos",
+    "detalles": {
+      "recursos_restantes": 0
+    },
+    "fecha_hora": "2025-12-03 16:43:36",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "amenaza_detectada_correctamente",
+    "descripcion": "Amenaza identificada y reportada correctamente",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:51:04",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:51:07",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": true,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:51:12",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:51:16",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:51:18",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 16:51:21",
+    "gravedad": "media"
   }
 ]
