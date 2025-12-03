@@ -680,12 +680,12 @@ class ActionTimerFactory:
     Factory para crear temporizadores de acciones con configuración balanceada
     """
     ACTION_CONFIGS = {
-        "inspeccionar": {"duration": 500, "cost": 0},
-        "escanear_archivo": {"duration": 3000, "cost": 10},
-        "escanear_carpeta": {"duration": 5000, "cost": 15},
-        "cuarentena": {"duration": 2000, "cost": 8},
+        "inspeccionar": {"duration": 500, "cost": 5},
+        "escanear_archivo": {"duration": 3000, "cost": 15},
+        "escanear_carpeta": {"duration": 5000, "cost": 20},
+        "cuarentena": {"duration": 2000, "cost": 12},
         "limpiar_malware": {"duration": 4000, "cost": 0},
-        "limpiar_seguro": {"duration": 1500, "cost": 12}
+        "limpiar_seguro": {"duration": 1500, "cost": 15}
     }
     
     @classmethod

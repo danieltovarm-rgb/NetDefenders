@@ -1,0 +1,458 @@
+[
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 11:09:05",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 11:12:16",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": false,
+      "dominio": true,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 11:12:29",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 11:15:25",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 11:15:33",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": false,
+      "dominio": true,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 11:15:39",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 2,
+    "tipo": "archivo_limpio_eliminado",
+    "descripcion": "Error: program2.dll era un archivo limpio y fue eliminado",
+    "detalles": {
+      "nombre_archivo": "program2.dll",
+      "accion": "limpiar",
+      "error": true
+    },
+    "fecha_hora": "2025-12-03 11:59:34",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus ransomware eliminado de x_virus.exe",
+    "detalles": {
+      "nombre_archivo": "x_virus.exe",
+      "tipo_virus": "ransomware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 11:59:56",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus spyware eliminado de spy_tool.exe",
+    "detalles": {
+      "nombre_archivo": "spy_tool.exe",
+      "tipo_virus": "spyware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 12:00:05",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus adware eliminado de adware_bundle.exe",
+    "detalles": {
+      "nombre_archivo": "adware_bundle.exe",
+      "tipo_virus": "adware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 12:00:20",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus adware eliminado de Free_Game.exe",
+    "detalles": {
+      "nombre_archivo": "Free_Game.exe",
+      "tipo_virus": "adware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 12:00:39",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus miner eliminado de crypto_miner.exe",
+    "detalles": {
+      "nombre_archivo": "crypto_miner.exe",
+      "tipo_virus": "miner",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 12:00:47",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 12:01:24",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 12:01:46",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 12:01:51",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "amenaza_detectada_correctamente",
+    "descripcion": "Amenaza identificada y reportada correctamente",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 12:02:01",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 12:02:22",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "amenaza_detectada_correctamente",
+    "descripcion": "Amenaza identificada y reportada correctamente",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 14:27:19",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 14:27:33",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 14:27:41",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "amenaza_detectada_correctamente",
+    "descripcion": "Amenaza identificada y reportada correctamente",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 14:27:49",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 14:27:57",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 14:28:05",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": false,
+      "dominio": true,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 14:34:16",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 14:34:22",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 14:34:28",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "correo_legitimo_identificado",
+    "descripcion": "Correo legítimo procesado correctamente",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 14:34:32",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": false,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 14:34:38",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {},
+    "fecha_hora": "2025-12-03 14:34:45",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": true,
+      "dominio": true,
+      "texto": true
+    },
+    "fecha_hora": "2025-12-03 15:59:26",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "falso_positivo",
+    "descripcion": "Correo legítimo marcado como amenaza",
+    "detalles": {
+      "logo": false,
+      "dominio": true,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 15:59:36",
+    "gravedad": "media"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": true,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 15:59:46",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "phishing_no_detectado",
+    "descripcion": "Amenaza no detectada en el correo",
+    "detalles": {
+      "logo": false,
+      "dominio": true,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 15:59:52",
+    "gravedad": "alta"
+  },
+  {
+    "nivel": 1,
+    "tipo": "amenaza_detectada_correctamente",
+    "descripcion": "Amenaza identificada y reportada correctamente",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 15:59:56",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 1,
+    "tipo": "amenaza_detectada_correctamente",
+    "descripcion": "Amenaza identificada y reportada correctamente",
+    "detalles": {
+      "logo": false,
+      "dominio": false,
+      "texto": false
+    },
+    "fecha_hora": "2025-12-03 16:00:01",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus ransomware eliminado de x_virus.exe",
+    "detalles": {
+      "nombre_archivo": "x_virus.exe",
+      "tipo_virus": "ransomware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 16:00:28",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus spyware eliminado de spy_tool.exe",
+    "detalles": {
+      "nombre_archivo": "spy_tool.exe",
+      "tipo_virus": "spyware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 16:00:34",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus adware eliminado de adware_bundle.exe",
+    "detalles": {
+      "nombre_archivo": "adware_bundle.exe",
+      "tipo_virus": "adware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 16:01:09",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus adware eliminado de Free_Game.exe",
+    "detalles": {
+      "nombre_archivo": "Free_Game.exe",
+      "tipo_virus": "adware",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 16:01:25",
+    "gravedad": "baja"
+  },
+  {
+    "nivel": 2,
+    "tipo": "sintoma_resuelto",
+    "descripcion": "Virus miner eliminado de crypto_miner.exe",
+    "detalles": {
+      "nombre_archivo": "crypto_miner.exe",
+      "tipo_virus": "miner",
+      "accion": "limpiar"
+    },
+    "fecha_hora": "2025-12-03 16:01:31",
+    "gravedad": "baja"
+  }
+]

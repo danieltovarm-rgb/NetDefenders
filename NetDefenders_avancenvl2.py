@@ -497,17 +497,29 @@ class PreQuizContextScreen(Screen):
         try:
             self.title_font = pygame.font.Font(self.game.font_path, 48)
             self.body_font = pygame.font.Font(self.game.font_path, 24)
+            self.btn_font = pygame.font.Font(self.game.font_path, 22)
         except Exception:
             self.title_font = pygame.font.SysFont("Consolas", 36)
             self.body_font = pygame.font.SysFont("Consolas", 20)
+            self.btn_font = pygame.font.SysFont("Consolas", 18)
         self.bg_color = (10, 10, 30)
         self.text_color = (0, 255, 200)
+        
+        # Botones
+        btn_w, btn_h = 200, 50
+        self.btn_comenzar = pygame.Rect(SCREEN_W//2 - btn_w - 20, SCREEN_H - 120, btn_w, btn_h)
+        self.btn_omitir = pygame.Rect(SCREEN_W//2 + 20, SCREEN_H - 120, btn_w, btn_h)
 
     def handle_event(self, event):
-        if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
-            # Ir al quiz pre
-            from_screen = QuizScreen(self.game, mode='pre', next_screen=LevelSelectScreen(self.game))
-            self.game.change_screen(from_screen)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            if self.btn_comenzar.collidepoint(mx, my):
+                # Ir al quiz pre
+                from_screen = QuizScreen(self.game, mode='pre', next_screen=LevelSelectScreen(self.game))
+                self.game.change_screen(from_screen)
+            elif self.btn_omitir.collidepoint(mx, my):
+                # Omitir quiz e ir directo a selección de nivel
+                self.game.change_screen(LevelSelectScreen(self.game))
 
     def update(self, dt):
         pass
@@ -523,14 +535,33 @@ class PreQuizContextScreen(Screen):
             "",
             "Al finalizar el juego, repetirás el test",
             "para medir tu mejora.",
-            "",
-            "Presiona cualquier tecla para comenzar..."
         ]
         y_offset = 220
         for line in lines:
             txt = self.body_font.render(line, True, (200, 200, 200))
             surf.blit(txt, (SCREEN_W//2 - txt.get_width()//2, y_offset))
             y_offset += 40
+        
+        # Dibujar botones
+        mx, my = pygame.mouse.get_pos()
+        
+        # Botón Comenzar Quiz
+        hover_comenzar = self.btn_comenzar.collidepoint(mx, my)
+        color_comenzar = (0, 180, 120) if hover_comenzar else (0, 140, 90)
+        pygame.draw.rect(surf, color_comenzar, self.btn_comenzar, border_radius=8)
+        pygame.draw.rect(surf, (0, 255, 200), self.btn_comenzar, 2, border_radius=8)
+        txt_comenzar = self.btn_font.render("Comenzar Quiz", True, (255, 255, 255))
+        surf.blit(txt_comenzar, (self.btn_comenzar.centerx - txt_comenzar.get_width()//2, 
+                                  self.btn_comenzar.centery - txt_comenzar.get_height()//2))
+        
+        # Botón Omitir Quiz
+        hover_omitir = self.btn_omitir.collidepoint(mx, my)
+        color_omitir = (120, 80, 80) if hover_omitir else (80, 60, 60)
+        pygame.draw.rect(surf, color_omitir, self.btn_omitir, border_radius=8)
+        pygame.draw.rect(surf, (180, 100, 100), self.btn_omitir, 2, border_radius=8)
+        txt_omitir = self.btn_font.render("Omitir Quiz", True, (200, 200, 200))
+        surf.blit(txt_omitir, (self.btn_omitir.centerx - txt_omitir.get_width()//2, 
+                               self.btn_omitir.centery - txt_omitir.get_height()//2))
 
 class QuizScreen(Screen):
     """Pantalla para pre/post quiz. Usa QUIZ_QA_LEVEL12.
@@ -1175,7 +1206,7 @@ class Level1Screen(BaseLevelScreen):
             "Tutor: También cuentas con BUSCAR EN WEB.\nHaz clic en ese botón dentro del correo y selecciona qué investigar: logo, dominio o texto.\nObtendrás información que te ayudará a decidir si es legítimo o malicioso.",
             "Tutor: Ten cuidado con los errores:\nSi RESPONDES a phishing perderás entre 15 y 30 puntos.\nSi REPORTAS un correo legítimo perderás 20 puntos.\nSi ELIMINAS uno legítimo perderás 10 puntos.",
             "Tutor: Cuando REPORTES o ELIMINES, debes marcar las razones por las que sospechas:\n- Logo\n- Dominio\n- Texto",
-            "Tutor: Sistema de puntuación por razones:\nPor cada razón CORRECTA causarás 2 puntos extra de daño al hacker.\nSi marcas razones INCORRECTAS, perderás entre 2 y 3 puntos de tu integridad.",
+            "Tutor: Sistema de puntuación por razones:\nPor cada razón CORRECTA causarás 2 puntos extra de daño al hacker.\nSi marcas razones INCORRECTAS, perderás 2 puntos de tu integridad.\nY si pasas por alto una razón, perderás 1 punto de tu",
             "Tutor: Recuerda, solo apareceré 3 veces durante la simulación para ayudarte si cometes errores.",
             "Tutor: ¡Iniciando simulación... ya!"
         ]
@@ -1188,7 +1219,7 @@ class Level1Screen(BaseLevelScreen):
         # Sprites de personajes en nuevas posiciones
         self.protagonista_sprite = ProtagonistaSprite(100, SCREEN_H - 100)
         self.hacker_sprite = HackerSprite(
-            SCREEN_W - 100, 100,
+            SCREEN_W - 50, 200,
             ["assets/hacker/idle/idle1.png", "assets/hacker/idle/idle2.png", "assets/hacker/idle/idle3.png",
              "assets/hacker/idle/idle4.png", "assets/hacker/idle/idle5.png", "assets/hacker/idle/idle6.png"],
             scale=(200, 200)
@@ -1239,6 +1270,13 @@ class Level1Screen(BaseLevelScreen):
 
         self.last_feedback = ""
         # Nota: El botón 'Volver' dentro del correo ahora lo gestiona EmailPanel
+        
+        # Botón para omitir tutoría
+        self.btn_omitir_tutoria = pygame.Rect(0, 0, 160, 40)  # Se posiciona en render
+        
+        # NUEVO: Para el cuadro de feedback superpuesto
+        self.feedback_lines = []  # Lista de líneas de feedback
+        self.feedback_visible = False  # Estado para mostrar el cuadro
 
     def _player_won(self):
         # Ganó si el hacker llegó a 0 o si al finalizar tiene más vida
@@ -1336,18 +1374,18 @@ class Level1Screen(BaseLevelScreen):
         if accion == "responder":
             return {"daño_jugador": 0, "daño_hacker": 0, "correcto": True}
         elif accion == "eliminar":
-            return {"daño_jugador": 10, "daño_hacker": 0, "correcto": False}
+            return {"daño_jugador": 15, "daño_hacker": 0, "correcto": False}
         elif accion == "reportar":
-            return {"daño_jugador": 20, "daño_hacker": 0, "correcto": False}
+            return {"daño_jugador": 25, "daño_hacker": 0, "correcto": False}
 
     def _procesar_correo_malicioso(self, accion, correo):
         if accion == "reportar":
-            return {"daño_jugador": 0, "daño_hacker": 25, "correcto": True}
+            return {"daño_jugador": 0, "daño_hacker": 20, "correcto": True}
         elif accion == "eliminar":
-            return {"daño_jugador": 0, "daño_hacker": 10, "correcto": True}
+            return {"daño_jugador": 0, "daño_hacker": 8, "correcto": True}
         elif accion == "responder":
             daño_extra = self._calcular_daño_por_tipo(correo.tipo_malicioso)
-            return {"daño_jugador": 15 + daño_extra, "daño_hacker": 0, "correcto": False}
+            return {"daño_jugador": 20 + daño_extra, "daño_hacker": 0, "correcto": False}
 
     def _calcular_daño_por_tipo(self, tipo_malicioso):
         daños = {
@@ -1359,31 +1397,34 @@ class Level1Screen(BaseLevelScreen):
         return daños.get(tipo_malicioso, 0)
 
     def procesar_razones(self, correo, razones_seleccionadas, accion_original):
-        """CORREGIDO: Ahora siempre retorna una tupla (daño_razones, bonus_hacker)"""
+        """ARREGLADO: Retorna (daño_incorrectas, daño_faltantes, bonus_hacker).
+        - Incorrectas (de más): -2 por cada una en maliciosos / -5 en legítimos.
+        - Faltantes: -1 por cada una en maliciosos."""
         if correo.es_legitimo:
-            # Para correos legítimos, cualquier razón seleccionada es incorrecta
-            if razones_seleccionadas:
-                daño_razones = len(razones_seleccionadas) * 3
-                return daño_razones, 0  # ← CORREGIDO: siempre retorna tupla
-            return 0, 0  # ← CORREGIDO: siempre retorna tupla
+            # Para legítimos: TODAS marcadas son incorrectas
+            daño_incorrectas = len(razones_seleccionadas) * 5
+            daño_faltantes = 0
+            bonus_hacker = 0
+            return daño_incorrectas, daño_faltantes, bonus_hacker
         else:
-            # Para correos maliciosos, verificar coincidencia con razones correctas
+            # Para maliciosos
             razones_correctas = set(correo.razones_correctas)
             razones_seleccionadas_set = set(razones_seleccionadas)
 
-            # Calcular razones incorrectas y faltantes
+            # Incorrectas (de más): -2 por cada una
             razones_incorrectas = razones_seleccionadas_set - razones_correctas
-            daño_razones_incorrectas = len(razones_incorrectas) * 2
+            daño_incorrectas = len(razones_incorrectas) * 2
 
+            # Faltantes: -1 por cada una (nuevo valor)
             razones_faltantes = razones_correctas - razones_seleccionadas_set
-            daño_razones_faltantes = len(razones_faltantes) * 1
+            daño_faltantes = len(razones_faltantes) * 1  # ← ¡CAMBIADO A *1!
 
-            # Bonus al hacker por razones correctas seleccionadas
+            # Bonus por correctas: +2 daño al hacker por cada una
             razones_correctas_seleccionadas = razones_correctas.intersection(razones_seleccionadas_set)
             bonus_hacker = len(razones_correctas_seleccionadas) * 2
 
-            return daño_razones_incorrectas + daño_razones_faltantes, bonus_hacker
-
+            return daño_incorrectas, daño_faltantes, bonus_hacker
+        
     def procesar_respuesta_completa(self, accion, razones_seleccionadas=None):
         correo = self.correo_abierto
         resultado = self.procesar_accion_correo(accion, correo)
@@ -1394,45 +1435,44 @@ class Level1Screen(BaseLevelScreen):
         mistake_details = {}
         
         # Procesar razones si es eliminar o reportar
-        daño_razones = 0
+        daño_incorrectas = 0
+        daño_faltantes = 0
         bonus_hacker = 0
         if razones_seleccionadas is not None:
-            daño_razones, bonus_hacker = self.procesar_razones(correo, razones_seleccionadas, accion)
+            daño_incorrectas, daño_faltantes, bonus_hacker = self.procesar_razones(correo, razones_seleccionadas, accion)
+            daño_razones_total = daño_incorrectas + daño_faltantes
             
-            # Detectar errores en las razones marcadas
-            if correo.es_legitimo == False:  # Si era malicioso (phishing)
+            # Detectar errores en las razones marcadas (para stats, sin cambio)
+            if not correo.es_legitimo:  # Malicioso
                 razones_correctas_set = set(correo.razones_correctas)
                 razones_seleccionadas_set = set(razones_seleccionadas)
-                
-                # Contar errores: opciones marcadas cuando NO debían (de más) + opciones NO marcadas cuando SÍ debían (de menos)
                 mistake_details["logo"] = ("Logo" in razones_seleccionadas_set and "Logo" not in razones_correctas_set) or \
-                                         ("Logo" not in razones_seleccionadas_set and "Logo" in razones_correctas_set)
+                                        ("Logo" not in razones_seleccionadas_set and "Logo" in razones_correctas_set)
                 mistake_details["dominio"] = ("Dominio" in razones_seleccionadas_set and "Dominio" not in razones_correctas_set) or \
                                             ("Dominio" not in razones_seleccionadas_set and "Dominio" in razones_correctas_set)
                 mistake_details["texto"] = ("Texto" in razones_seleccionadas_set and "Texto" not in razones_correctas_set) or \
-                                          ("Texto" not in razones_seleccionadas_set and "Texto" in razones_correctas_set)
-            else:  # Si era legítimo pero lo marcaron como amenaza (falso positivo)
-                # Cualquier razón marcada en un correo legítimo es un error
+                                        ("Texto" not in razones_seleccionadas_set and "Texto" in razones_correctas_set)
+            else:  # Legítimo
                 razones_seleccionadas_set = set(razones_seleccionadas)
                 mistake_details["logo"] = "Logo" in razones_seleccionadas_set
                 mistake_details["dominio"] = "Dominio" in razones_seleccionadas_set
                 mistake_details["texto"] = "Texto" in razones_seleccionadas_set
 
-            # Aplicar daño por razones incorrectas
-            if daño_razones > 0:
-                self.protagonista.recibir_daño(daño_razones)
-                hubo_error_accion = True # Error en razones también cuenta
+            # Aplicar daño total por razones
+            if daño_razones_total > 0:
+                self.protagonista.recibir_daño(daño_razones_total)
+                hubo_error_accion = True
 
-            # Aplicar bonus al hacker por razones correctas
+            # Aplicar bonus al hacker
             if bonus_hacker > 0:
                 self.hacker_logic.vida = max(0, self.hacker_logic.vida - bonus_hacker)
 
-        # NUEVO: Registrar en sistema de estadísticas automáticamente con detalles
+        # Registrar stats (sin cambio)
         es_amenaza = not correo.es_legitimo
-        respuesta_correcta = resultado["correcto"] and daño_razones == 0
+        respuesta_correcta = resultado["correcto"] and (daño_incorrectas + daño_faltantes == 0)
         self.game.player_stats.analyze_email(es_amenaza, respuesta_correcta, mistake_details)
 
-        # Aplicar daño base de la acción
+        # Daño base de acción (sin cambio)
         if resultado["daño_jugador"] > 0:
             self.protagonista.recibir_daño(resultado["daño_jugador"])
             hubo_error_accion = True
@@ -1440,35 +1480,41 @@ class Level1Screen(BaseLevelScreen):
         if resultado["daño_hacker"] > 0:
             self.hacker_logic.vida = max(0, self.hacker_logic.vida - resultado["daño_hacker"])
 
-        self.mostrar_feedback_completo(resultado, daño_razones, bonus_hacker, razones_seleccionadas)
+        # NUEVO: Preparar feedback SEPARADO por tipos de razones
+        self.preparar_feedback_lines(resultado, daño_incorrectas, daño_faltantes, bonus_hacker)
+        self.feedback_visible = True
+        self.estado = "mostrando_feedback"
+        self.hubo_error_accion_temp = hubo_error_accion
+        self.correo_temp = correo
+        self.accion_temp = accion
+        self.razones_seleccionadas_temp = razones_seleccionadas
 
-        # --- GESTIÓN DE TUTOR Y BURLAS ---
-        if hubo_error_accion:
-            self.mostrar_tutor_si_corresponde(correo, accion, razones_seleccionadas)
-            self.mostrar_burla_hacker(resultado) # Mostrar burla si hubo error
-        
         correo.procesado = True
         correo.visible = False
-        self.siguiente_correo()
+        
+    def preparar_feedback_lines(self, resultado, daño_incorrectas, daño_faltantes, bonus_hacker):
+        self.feedback_lines = []
 
-    def mostrar_feedback_completo(self, resultado, daño_razones, bonus_hacker, razones_seleccionadas):
-        mensajes = []
-
+        # Título: Éxito o Error
         if resultado["correcto"]:
+            self.feedback_lines.append("¡BIEN!")
             if resultado["daño_hacker"] > 0:
-                mensajes.append(f"¡Bien! Dañaste al hacker en {resultado['daño_hacker']} puntos")
+                self.feedback_lines.append(f"Daño base al hacker: {resultado['daño_hacker']} puntos")
         else:
+            self.feedback_lines.append("¡ERROR!")
             if resultado["daño_jugador"] > 0:
-                mensajes.append(f"Error: Perdiste {resultado['daño_jugador']} puntos de integridad")
+                self.feedback_lines.append(f"Daño a tu integridad: {resultado['daño_jugador']} puntos")
 
-        if daño_razones > 0:
-            mensajes.append(f"Razones incorrectas: -{daño_razones} integridad")
-
+        # Razones SEPARADAS (nuevo)
+        if daño_incorrectas > 0:
+            self.feedback_lines.append(f"Razones incorrectas: -{daño_incorrectas} a tu integridad")
+        if daño_faltantes > 0:
+            self.feedback_lines.append(f"Razones faltantes: -{daño_faltantes} a tu integridad")
         if bonus_hacker > 0:
-            mensajes.append(f"Razones correctas: -{bonus_hacker} al hacker")
+            self.feedback_lines.append(f"Razones correctas: -{bonus_hacker} al hacker")
 
-        self.last_feedback = " | ".join(mensajes)
-
+        self.feedback_lines.append("Presiona clic o Enter para continuar")
+        
     def mostrar_tutor_si_corresponde(self, correo, accion, razones_seleccionadas):
         if self.contador_tutor < self.max_apariciones_tutor:
             self.contador_tutor += 1
@@ -1555,11 +1601,20 @@ class Level1Screen(BaseLevelScreen):
 
         # Procesar solo el clic izquierdo
         if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+            # NUEVO: Manejar Enter para cerrar feedback
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN and self.feedback_visible:
+                self.cerrar_feedback()
             return
 
         mx, my = event.pos
 
         if self.estado == "narrativa_inicial":
+            # Verificar si se hizo click en el botón de omitir tutoría
+            if self.btn_omitir_tutoria.collidepoint(mx, my):
+                self.show_narrative = False
+                self.estado = "esperando_correo"
+                return
+            
             # Si el texto aún se está animando, completarlo al hacer click (no avanzar todavía)
             if len(self.texto_actual) < len(self.texto_completo):
                 self.texto_actual = self.texto_completo
@@ -1591,6 +1646,11 @@ class Level1Screen(BaseLevelScreen):
             self.game.change_screen(LevelSelectScreen(self.game))
             return
 
+        # NUEVO: Cierre del feedback con click
+        if self.feedback_visible:
+            self.cerrar_feedback()
+            return
+
         if self.estado == "esperando_correo":
             # Delegar selección al Inbox OO (usa rect del hacker para layout seguro)
             seleccionado = self.inbox.handle_event(event, hacker_rect=self.hacker_sprite.rect)
@@ -1618,6 +1678,23 @@ class Level1Screen(BaseLevelScreen):
                         self.procesar_respuesta_completa(res.get("accion"), res.get("razones", []))
                         self.email_panel = None
                         return
+
+    def cerrar_feedback(self):
+        self.feedback_visible = False
+        self.feedback_lines = []
+        
+        # Ahora ejecutar tutor y burla si aplica
+        resultado = self.procesar_accion_correo(self.accion_temp, self.correo_temp)
+        if self.hubo_error_accion_temp:
+            self.mostrar_tutor_si_corresponde(self.correo_temp, self.accion_temp, self.razones_seleccionadas_temp)
+            self.mostrar_burla_hacker(resultado) # Mostrar burla si hubo error
+        
+        # Limpiar temporales y seguir
+        self.hubo_error_accion_temp = False
+        self.correo_temp = None
+        self.accion_temp = None
+        self.razones_seleccionadas_temp = None
+        self.siguiente_correo()
 
     def update(self, dt):
         self.hacker_sprite.update(dt)
@@ -1648,69 +1725,23 @@ class Level1Screen(BaseLevelScreen):
     def render(self, surf):
         surf.fill((0, 0, 0))
 
-        # Dibujar personajes
+        # 1. Fondo y personajes (primero)
         self.protagonista_sprite.draw(surf)
         self.hacker_sprite.draw(surf)
 
-        # Dibujar burla del hacker
-        if self.burla_hacker_timer > 0 and self.burla_hacker:
-            # Caja de diálogo para el hacker
-            hacker_box_w = 280
-            hacker_box_h = 80
-            hacker_box_rect = pygame.Rect(
-                self.hacker_sprite.rect.left - hacker_box_w - 10, 
-                self.hacker_sprite.rect.top, 
-                hacker_box_w, 
-                hacker_box_h
-            )
-            # Asegurarse que no se salga por la izquierda
-            if hacker_box_rect.left < 10:
-                hacker_box_rect.left = 10
-                
-            pygame.draw.rect(surf, (50, 20, 20), hacker_box_rect, border_radius=10)
-            pygame.draw.rect(surf, (200, 100, 100), hacker_box_rect, 2, border_radius=10)
-            
-            # Envolver texto de la burla
-            wrapped_lines = self._wrap_text(self.burla_hacker, self.small_font, hacker_box_rect.width - 20)
-            y_offset = 10
-            for line in wrapped_lines:
-                taunt_text = self.small_font.render(line, True, (255, 200, 200))
-                surf.blit(taunt_text, (hacker_box_rect.x + 10, hacker_box_rect.y + y_offset))
-                y_offset += taunt_text.get_height() + 5
-
-        # Dibujar tutor si está visible
-        if self.tutor_visible:
-            self.tutor_sprite.draw(surf)
-            tutor_box = pygame.Rect(SCREEN_W - 600, SCREEN_H - 120, 380, 80)
-            pygame.draw.rect(surf, (30, 30, 60), tutor_box, border_radius=10)
-            pygame.draw.rect(surf, (100, 100, 200), tutor_box, 2, border_radius=10)
-            # Envolver texto para que quepa en la caja
-            wrapped_lines = self._wrap_text(self.tutor_mensaje, self.small_font, tutor_box.width - 20) # -20 por el padding
-
-            y_offset = 10
-            for line in wrapped_lines:
-                tutor_text = self.small_font.render(line, True, (255, 255, 255))
-                surf.blit(tutor_text, (tutor_box.x + 10, tutor_box.y + y_offset))
-                y_offset += tutor_text.get_height() + 5 # Añadir espacio entre líneas
-
-        # HUD: vidas
+        # 2. HUD siempre visible
         vida_txt = self.font.render(f"Integridad Red: {self.protagonista.vida}", True, (200, 200, 200))
         surf.blit(vida_txt, (20, 20))
         hack_txt = self.font.render(f"Progreso Hacker: {self.hacker_logic.vida}", True, (200, 200, 200))
-        surf.blit(hack_txt, (SCREEN_W - 280, 20)) # Ajustado para el texto
+        surf.blit(hack_txt, (SCREEN_W - 280, 20))
 
-        # Bandeja de entrada (solo cuando no hay narrativa ni correo abierto)
-        if self.estado in ("esperando_correo",) and not self.show_narrative:
-            self.inbox.render(surf, hacker_rect=self.hacker_sprite.rect)
-
-        # Narrativa inicial
+        # 3. Elementos principales según estado
         if self.show_narrative:
+            # Narrativa inicial
             box = pygame.Rect(100, 150, 600, 300)
             pygame.draw.rect(surf, (20, 20, 40), box, border_radius=10)
             pygame.draw.rect(surf, (100, 100, 200), box, 2, border_radius=10)
 
-            # Mostrar narrativa con animación de texto (usar self.texto_actual)
-            # Usar self.texto_actual si no está vacío, si no, el texto completo (para el primer frame)
             texto_a_mostrar = self.texto_actual if self.texto_actual else self.narrative_lines[self.narrative_index]
             wrapped_lines = self._wrap_text(texto_a_mostrar, self.small_font, box.width - 40)
 
@@ -1723,28 +1754,34 @@ class Level1Screen(BaseLevelScreen):
             continue_text = self.small_font.render("Haz clic para continuar", True, (200, 200, 200))
             surf.blit(continue_text, (box.centerx - continue_text.get_width() // 2, box.bottom - 30))
 
-        # Correo abierto
-        elif self.estado == "correo_abierto" and self.correo_abierto:
-            if self.email_panel:
-                self.email_panel.render(surf)
+            # Botón omitir tutoría
+            self.btn_omitir_tutoria.update(box.right - 170, box.bottom + 15, 160, 40)
+            mx, my = pygame.mouse.get_pos()
+            hover_omitir = self.btn_omitir_tutoria.collidepoint(mx, my)
+            color_omitir = (100, 70, 70) if hover_omitir else (70, 50, 50)
+            pygame.draw.rect(surf, color_omitir, self.btn_omitir_tutoria, border_radius=8)
+            pygame.draw.rect(surf, (150, 100, 100), self.btn_omitir_tutoria, 2, border_radius=8)
+            txt_omitir = self.small_font.render("Omitir Tutoría", True, (200, 200, 200))
+            surf.blit(txt_omitir, (self.btn_omitir_tutoria.centerx - txt_omitir.get_width()//2,
+                                   self.btn_omitir_tutoria.centery - txt_omitir.get_height()//2))
 
-        # Selección de razones
-        # La selección de razones ahora se maneja dentro de EmailPanel
+        elif self.estado == "esperando_correo":
+            self.inbox.render(surf, hacker_rect=self.hacker_sprite.rect)
 
-        # Fin del juego
+        elif self.estado == "correo_abierto" and self.email_panel:
+            self.email_panel.render(surf)
+
         elif self.estado == "fin_juego":
             fin_box = pygame.Rect(200, 200, 400, 200)
             pygame.draw.rect(surf, (20, 20, 40), fin_box, border_radius=10)
             pygame.draw.rect(surf, (100, 100, 200), fin_box, 2, border_radius=10)
             
-            mensaje = "" # Mensaje por defecto
-            
+            mensaje = ""
             if self.protagonista.vida <= 0:
                 mensaje = "¡Brecha de Seguridad! El hacker te ha derrotado."
             elif self.hacker_logic.vida <= 0:
                 mensaje = "¡Red Asegurada! Has derrotado al hacker."
             else:
-                # Todos los correos procesados - gana el que tenga más vida
                 if self.protagonista.vida > self.hacker_logic.vida:
                     mensaje = "¡Nivel Completado! Has procesado todo y ganado."
                 elif self.hacker_logic.vida > self.protagonista.vida:
@@ -1752,10 +1789,8 @@ class Level1Screen(BaseLevelScreen):
                 else:
                     mensaje = "¡Empate! La red está comprometida."
 
-            # Envolver mensaje final
             wrapped_lines = self._wrap_text(mensaje, self.option_font, fin_box.width - 40)
             y_offset = fin_box.centery - (len(wrapped_lines) * self.option_font.get_height()) // 2 - 10
-            
             for line in wrapped_lines:
                 text = self.option_font.render(line, True, (255, 255, 255))
                 surf.blit(text, (fin_box.centerx - text.get_width() // 2, y_offset))
@@ -1764,11 +1799,67 @@ class Level1Screen(BaseLevelScreen):
             continue_text = self.small_font.render("Haz clic para volver al menú", True, (200, 200, 200))
             surf.blit(continue_text, (fin_box.centerx - continue_text.get_width() // 2, fin_box.bottom - 40))
 
-        # Feedback
-        if self.last_feedback:
-            feedback_text = self.small_font.render(self.last_feedback, True, (255, 255, 100))
-            surf.blit(feedback_text, (SCREEN_W // 2 - feedback_text.get_width() // 2, SCREEN_H - 40))
+        # 4. Feedback superpuesto (siempre encima de casi todo)
+        if self.feedback_visible:
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150))
+            surf.blit(overlay, (0, 0))
+            
+            feedback_box_w = 420
+            feedback_box_h = 220 + len(self.feedback_lines) * 8
+            feedback_box = pygame.Rect(
+                (SCREEN_W - feedback_box_w) // 2,
+                (SCREEN_H - feedback_box_h) // 2,
+                feedback_box_w,
+                feedback_box_h
+            )
+            pygame.draw.rect(surf, (30, 30, 50), feedback_box, border_radius=12)
+            pygame.draw.rect(surf, (150, 150, 200), feedback_box, 2, border_radius=12)
+            
+            y_offset = 25
+            for line in self.feedback_lines:
+                text_surf = self.small_font.render(line, True, (255, 255, 255))
+                surf.blit(text_surf, (feedback_box.centerx - text_surf.get_width() // 2, feedback_box.y + y_offset))
+                y_offset += text_surf.get_height() + 12
 
+        # 5. Tutor (si está visible) - también encima del feedback
+        if self.tutor_visible:
+            self.tutor_sprite.draw(surf)
+            tutor_box = pygame.Rect(SCREEN_W - 600, SCREEN_H - 160, 380, 110)
+            pygame.draw.rect(surf, (30, 30, 60), tutor_box, border_radius=10)
+            pygame.draw.rect(surf, (100, 100, 200), tutor_box, 2, border_radius=10)
+            wrapped_lines = self._wrap_text(self.tutor_mensaje, self.small_font, tutor_box.width - 20)
+            y_offset = 10
+            for line in wrapped_lines:
+                tutor_text = self.small_font.render(line, True, (255, 255, 255))
+                surf.blit(tutor_text, (tutor_box.x + 10, tutor_box.y + y_offset))
+                y_offset += tutor_text.get_height() + 5
+
+        # 6. BURLA DEL HACKER → ¡SIEMPRE AL FINAL! (así queda encima de TODO)
+        if self.burla_hacker_timer > 0 and self.burla_hacker:
+            hacker_box_w = 300
+            hacker_box_h = 90
+            hacker_box_rect = pygame.Rect(
+                self.hacker_sprite.rect.left - hacker_box_w - 20,
+                self.hacker_sprite.rect.top - 10,
+                hacker_box_w,
+                hacker_box_h
+            )
+            # Evitar que se salga por la izquierda
+            if hacker_box_rect.left < 10:
+                hacker_box_rect.left = 10
+
+            # Fondo oscuro + borde rojo brillante
+            pygame.draw.rect(surf, (40, 10, 10), hacker_box_rect, border_radius=12)
+            pygame.draw.rect(surf, (220, 50, 50), hacker_box_rect, 3, border_radius=12)
+
+            # Texto envuelto
+            wrapped_lines = self._wrap_text(self.burla_hacker, self.small_font, hacker_box_rect.width - 30)
+            y_offset = 12
+            for line in wrapped_lines:
+                taunt_text = self.small_font.render(line, True, (255, 180, 180))
+                surf.blit(taunt_text, (hacker_box_rect.x + 15, hacker_box_rect.y + y_offset))
+                y_offset += taunt_text.get_height() + 4
 
 # --------- Clase Protagonista (Visual) ----------
 class ProtagonistaSprite:
@@ -3125,11 +3216,13 @@ class EmailPanel:
                             self.razones_sel.remove(r)
                         else:
                             self.razones_sel.append(r)
-                if self.btn_confirmar.collidepoint(event.pos):
+                # Solo permitir confirmar si hay al menos una razón seleccionada
+                if self.btn_confirmar.collidepoint(event.pos) and len(self.razones_sel) > 0:
                     acc = self._accion_pendiente
+                    razones_confirmadas = list(self.razones_sel)  # Guardar antes de limpiar
                     self.mode = "reading"
                     self.razones_sel = []  # Limpiar selección
-                    return {"type": "reasons_confirm", "accion": acc, "razones": list(self.razones_sel)}
+                    return {"type": "reasons_confirm", "accion": acc, "razones": razones_confirmadas}
 
         # --- (NUEVO) Manejo de Soltar Clic ---
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -3425,13 +3518,21 @@ class EmailPanel:
             surf.blit(s, (self.btn_volver_razones.centerx - s.get_width() // 2, 
                          self.btn_volver_razones.centery - s.get_height() // 2))
             
-            # Botón Confirmar
+            # Botón Confirmar - deshabilitado si no hay razones seleccionadas
             self.btn_confirmar.update(btn_confirmar_x, btn_bottom_y, 120, 40)
-            is_hover_confirmar = self.btn_confirmar.collidepoint(mx, my)
-            color_confirmar = (90, 220, 90) if is_hover_confirmar else (70, 180, 70)
+            btn_habilitado = len(self.razones_sel) > 0
+            is_hover_confirmar = self.btn_confirmar.collidepoint(mx, my) and btn_habilitado
+            if btn_habilitado:
+                color_confirmar = (90, 220, 90) if is_hover_confirmar else (70, 180, 70)
+                border_color = (120, 240, 120)
+                text_color = (255, 255, 255)
+            else:
+                color_confirmar = (80, 80, 80)  # Gris deshabilitado
+                border_color = (100, 100, 100)
+                text_color = (150, 150, 150)
             pygame.draw.rect(surf, color_confirmar, self.btn_confirmar, border_radius=6)
-            pygame.draw.rect(surf, (120, 240, 120), self.btn_confirmar, 2, border_radius=6)
-            s = self.font_buttons.render("Confirmar", True, (255, 255, 255))
+            pygame.draw.rect(surf, border_color, self.btn_confirmar, 2, border_radius=6)
+            s = self.font_buttons.render("Confirmar", True, text_color)
             surf.blit(s, (self.btn_confirmar.centerx - s.get_width() // 2, 
                          self.btn_confirmar.centery - s.get_height() // 2))
         
@@ -4177,8 +4278,8 @@ class OverlayEducativo:
 class Level2Screen(Screen):
     def __init__(self, game):
         super().__init__(game)
-        self.state = "tutor_inicial"  # Cambiado de "narrativa_inicial" a "tutor_inicial"
-        
+        self.state = "tutor_inicial" # Cambiado de "narrativa_inicial" a "tutor_inicial"
+      
         # Mensaje del tutor
         self.tutor_mensaje = [
             "¡Bienvenido al Nivel 2: Defensa Avanzada!",
@@ -4190,37 +4291,35 @@ class Level2Screen(Screen):
             "- SPYWARE: Registra tus teclas y roba información",
             "",
             "Herramientas disponibles:",
-            "• INSPECCIONAR: Ver detalles del archivo (gratis)",
-            "• ESCANEAR: Detectar virus (10 recursos por archivo, 15 por carpeta)",
-            "• CUARENTENA: Aislar virus temporalmente (8 recursos)",
-            "• LIMPIAR: Eliminar virus permanentemente (gratis si es virus)",
+            "• INSPECCIONAR: Ver metadatos básicos (5 recursos) - NO revela virus",
+            "• ESCANEAR: Detectar virus (15 recursos por archivo, 20 por carpeta)",
+            "• CUARENTENA: Aislar virus temporalmente (12 recursos)",
+            "• LIMPIAR: Eliminar virus (gratis si es virus, -15 recursos si es seguro)",
             "",
             "¡CUIDADO! Los síntomas aparecerán si no actúas rápido.",
             "Elimina TODOS los virus antes de quedarte sin recursos.",
             "",
             "Presiona ENTER para comenzar..."
         ]
-
         # Sistema de archivos y virus
         self.gestor_virus = GestorVirus()
         self.archivo_seleccionado = None
         self.accion_en_progreso = None
         self.tiempo_accion = 0
         self.duracion_escaneo = 3000
-
         # Sistema de recursos
         self.recursos = 100
-        self.recursos_display = 100.0  # Para animación suave del número
-        self.recursos_anterior = 100  # Para detectar cambios
+        self.recursos_display = 100.0 # Para animación suave del número
+        self.recursos_anterior = 100 # Para detectar cambios
         self.costos_acciones = {
-            "inspeccionar": 0,
-            "escanear_archivo": 10,
-            "escanear_carpeta": 15,
-            "cuarentena": 8,
+            "inspeccionar": 5,
+            "escanear_archivo": 15,
+            "escanear_carpeta": 20,
+            "cuarentena": 12,
+            "liberar_cuarentena": 5,  # Nuevo costo para liberar cuarentena
             "limpiar_malware": 0,
-            "limpiar_seguro": 12
+            "limpiar_seguro": 15
         }
-
         # Estructura de directorios completa
         self.directory_structure = {
             "C:/": ["Users", "Program Files", "Windows", "Temp"],
@@ -4235,26 +4334,20 @@ class Level2Screen(Screen):
             "C:/Windows/System32": [],
             "C:/Temp": []
         }
-
         # Directorio actual y anterior
         self.current_directory = "C:/"
         self.previous_directory = None
-
         self.game_time = 0
         self.door_interaction_distance = 50
-
         # HUD configuration
         margin = 10
         panel_top = 50
-        log_height = 120  # Aumentado de 80 a 120
-
+        log_height = 120 # Aumentado de 80 a 120
         available_width = SCREEN_W - (margin * 4)
         left_width = int(available_width * 0.25)
         right_width = int(available_width * 0.25)
         center_width = available_width - left_width - right_width
-
         panel_height = SCREEN_H - panel_top - log_height - (margin * 2)
-
         self.hud_rects = {
             "left_files": pygame.Rect(margin, panel_top, left_width, panel_height),
             "center_preview": pygame.Rect(margin * 2 + left_width, panel_top, center_width, panel_height),
@@ -4262,7 +4355,6 @@ class Level2Screen(Screen):
             "bottom_log": pygame.Rect(margin, SCREEN_H - log_height, SCREEN_W - (margin * 2), log_height - margin),
             "resource_bar": pygame.Rect(margin, 30, SCREEN_W - (margin * 2), 10)
         }
-
         # Colores del HUD
         self.hud_colors = {
             "background": (20, 25, 35),
@@ -4273,13 +4365,11 @@ class Level2Screen(Screen):
             "door": (0, 150, 200),
             "door_highlight": (255, 255, 0)
         }
-
         # Imágenes para puertas (1:1). Si no existen, se usa fallback (rectángulo).
         self.door_image_path = get_asset_path(os.path.join("assets", "doors", "door.png"))
         self.back_door_image_path = get_asset_path(os.path.join("assets", "doors", "back_door.png"))
         # Cache unificado para todas las imágenes por (ruta, tamaño)
         self._image_cache = {}
-
         # Imágenes para las herramientas (iconos de acciones)
         self.tool_images = {
             "Inspeccionar": get_asset_path(os.path.join("assets", "tools", "inspeccionar.png")),
@@ -4287,35 +4377,30 @@ class Level2Screen(Screen):
             "Cuarentena": get_asset_path(os.path.join("assets", "tools", "cuarentena.png")),
             "Limpiar": get_asset_path(os.path.join("assets", "tools", "limpiar.png"))
         }
-
         # Panel central de referencia para puertas
         center_panel = self.hud_rects["center_preview"]
-
         # Definir puertas reubicadas: cuadrícula horizontal en esquina superior izquierda del panel central.
         # Además, la puerta "Back" se sitúa centrada en la parte inferior del panel central.
-        door_width, door_height = 72, 72  # Tamaño para puertas normales (más pequeñas)
-        back_door_width, back_door_height = 96, 96  # Tamaño para puerta Back (más grande)
+        door_width, door_height = 72, 72 # Tamaño para puertas normales (más pequeñas)
+        back_door_width, back_door_height = 96, 96 # Tamaño para puerta Back (más grande)
         dw, dh = door_width, door_height
-        tlx = center_panel.left + 20  # margen interno izquierdo
+        tlx = center_panel.left + 20 # margen interno izquierdo
         # MOVER CUADRÍCULA UN POCO MÁS ABAJO PARA NO CHOCAR CON TEXTO DEL SISTEMA
-        tly = center_panel.top + 50   # margen interno superior ajustado (+30)
+        tly = center_panel.top + 50 # margen interno superior ajustado (+30)
         gap = 8
-        usable_w = center_panel.w - 40  # márgenes internos totales (20 izquierda, 20 derecha)
+        usable_w = center_panel.w - 40 # márgenes internos totales (20 izquierda, 20 derecha)
         cols = max(1, usable_w // (dw + gap))
-
         def rect_at(index):
             row = index // cols
             col = index % cols
             x = tlx + col * (dw + gap)
             y = tly + row * (dh + gap)
             return pygame.Rect(x, y, dw, dh)
-
         def back_rect():
             # Posicionar en esquina inferior izquierda del panel con tamaño más grande
             bx = center_panel.left + 20
             by = center_panel.bottom - back_door_height - 20
             return pygame.Rect(bx, by, back_door_width, back_door_height)
-
         self.doors = {
             "C:/": {
                 "Users": (rect_at(0), "C:/Users"),
@@ -4388,14 +4473,12 @@ class Level2Screen(Screen):
                 "Back": (back_rect(), "C:/")
             }
         }
-
         # Estado del HUD
         self.active_panel = "center_preview"
         self.hud_elements = {
             "left_files": [],
             "tools": ["Inspeccionar", "Escanear", "Cuarentena", "Limpiar"]
         }
-
         # Fuentes
         # Cargar fuente personalizada desde archivo texto.ttf (fallback a default si falla)
         try:
@@ -4406,33 +4489,28 @@ class Level2Screen(Screen):
             custom_font_title = pygame.font.Font(None, 24)
             custom_font_normal = pygame.font.Font(None, 20)
             custom_font_small = pygame.font.Font(None, 16)
-
         self.fonts = {
             "title": custom_font_title,
             "normal": custom_font_normal,
             "small": custom_font_small
         }
-
         # Botones de herramientas
         self.tool_button_rects = []
         tool_rect = self.hud_rects["right_tools"].copy()
         tool_rect.y += 35
         tool_rect.x += 10
         tool_rect.width -= 20
-
         for tool in self.hud_elements["tools"]:
             button_rect = pygame.Rect(tool_rect.x, tool_rect.y, tool_rect.width, 50)
             self.tool_button_rects.append(button_rect)
             tool_rect.y += 60
-
         # Variables de estado del juego
         self.max_mistakes = 5
         self.mistakes_made = 0
-        self.total_viruses = 0  # Se calculará después
+        self.total_viruses = 0 # Se calculará después
         self.viruses_cleaned = 0
         self.victory_condition = False
         self.game_over_reason = ""
-
         # Estado de transición
         self.in_transition = False
         self.transition_time = 0.0
@@ -4440,13 +4518,11 @@ class Level2Screen(Screen):
         self.transition_target = None
         self.transition_start_pos = pygame.math.Vector2(0, 0)
         self.transition_end_pos = pygame.math.Vector2(0, 0)
-
         # Interacción
         self.near_door = None
         self.door_highlight_time = 0.0
         self.pressed_door = None
         self.pressed_file = None
-
         # Archivos
         self.files_in_room = {}
         self.file_interaction_distance = 40
@@ -4454,12 +4530,11 @@ class Level2Screen(Screen):
         self.file_highlight_time = 0.0
         # Estado previo de la tecla E para disparo solo en flanco
         self._e_prev = False
-
         # Mensajes
         self.current_message = "Log: Esperando acciones..."
         self.message_duration = 3.0
         self.effect_timers = {"message": 0.0}
-        
+      
         # Sistema de scroll para el log
         self.log_lines = []
         self.log_scroll_offset = 0
@@ -4467,18 +4542,16 @@ class Level2Screen(Screen):
         self.log_scrollbar_dragging = False
         self.log_drag_start_y = 0
         self.log_drag_start_offset = 0
-
         # =============================================================================
         # GENERACIÓN DE ARCHIVOS CON METADATOS COMPLETOS (MÁS DE 10 ARCHIVOS)
         # =============================================================================
         cp_x, cp_y = self.hud_rects["center_preview"].centerx, self.hud_rects["center_preview"].centery
         # Los archivos ahora tienen el mismo tamaño que las puertas normales
-        file_w, file_h = door_width, door_height  # 72x72, igual que puertas normales
-
+        file_w, file_h = door_width, door_height # 72x72, igual que puertas normales
         # Generar archivos para cada directorio - MÁS DE 10 ARCHIVOS TOTAL
         self.files_in_room = {
             "C:/": [
-                ArchivoSistema("readme.txt", ".txt", "1 KB", "15/03/2024 10:30", "Lectura", False, 
+                ArchivoSistema("readme.txt", ".txt", "1 KB", "15/03/2024 10:30", "Lectura", False,
                                image_path=get_asset_path(os.path.join("assets", "files", "txt.png"))),
                 ArchivoSistema("config.sys", ".sys", "2 KB", "14/03/2024 14:15", "Sistema", False,
                                image_path=get_asset_path(os.path.join("assets", "files", "sys.png"))),
@@ -4532,13 +4605,11 @@ class Level2Screen(Screen):
                                image_path=get_asset_path(os.path.join("assets", "files", "dll.png")))
             ]
         }
-
         # Calcular el total de virus
         for directorio, archivos in self.files_in_room.items():
             for archivo in archivos:
                 if archivo.es_infectado:
                     self.total_viruses += 1
-
         # Asignar rectángulos a los archivos - POSICIONADOS EN LA MISMA CUADRÍCULA QUE LAS PUERTAS
         # Los archivos continúan después de las puertas normales (no Back), en la misma cuadrícula
         for directorio, archivos in self.files_in_room.items():
@@ -4548,53 +4619,53 @@ class Level2Screen(Screen):
                 for door_name in self.doors[directorio].keys():
                     if door_name != "Back":
                         num_normal_doors += 1
-            
+          
             # Los archivos empiezan después de las puertas normales
             for i, archivo in enumerate(archivos):
                 # índice global en la cuadrícula (después de las puertas normales)
                 grid_index = num_normal_doors + i
                 archivo.rect = rect_at(grid_index)
-                
+              
                 # NO activar síntomas al inicio - se activarán al entrar a la carpeta
-
         self.paused = False
-
         # INTEGRACIÓN: Sistema de gestión de Nivel 2 (OOP)
         self.level2_manager = Level2GameManager(total_threats=self.total_viruses)
-        
+      
         # INTEGRACIÓN: Configurar nivel en PlayerStats
         self.game.player_stats.set_current_level(2)
-        
+      
         # Registrar síntomas iniciales en el manager
         for directorio, archivos in self.files_in_room.items():
             for archivo in archivos:
                 if archivo.es_infectado and archivo.tipo_virus:
                     self.level2_manager.activate_virus_symptom(archivo.tipo_virus, archivo.nombre)
-
         # SISTEMA EDUCATIVO
         self.overlay_educativo = OverlayEducativo(SCREEN_W, SCREEN_H)
         self.quiz_manager = QuizManager()
         self.gestor_mensajes = GestorMensajesEducativos()
-        self.archivos_con_quiz = set()  # IDs de archivos que ya tuvieron quiz
-        self.sintomas_tip_mostrado = set()  # Síntomas que ya mostraron tip
-        
+        self.archivos_con_quiz = set() # IDs de archivos que ya tuvieron quiz
+        self.sintomas_tip_mostrado = set() # Síntomas que ya mostraron tip
+      
         # Control de overlay de ransomware
         self.ransomware_overlay_oculto = False
         self.ransomware_overlay_timer = 0
-        
+      
         # Control de teclas fantasma (spyware)
         self.teclas_fantasma_timer = 0
         self.teclas_fantasma_caracteres = []
         self.keylog_texto = ""
         self.keylog_timer = 0
         self.keylog_buffer = ["a", "s", "d", "w", "space", "enter", "ctrl", "1", "2", "3", "click"]
-
         # Actualizar panel de archivos inicial
         self.actualizar_panel_archivos()
-        
+      
         # SISTEMA EDUCATIVO: Activar síntomas del directorio inicial al comenzar el juego
         self.activar_sintomas_directorio_actual()
 
+        # Glitch effect variables
+        self.glitch_active = False
+        self.glitch_timer = 0
+        self.glitch_duration = 3000  # 3 seconds in ms
     # --- Soporte de imagen para puertas ---
     def _get_image_scaled(self, image_path: str, side: int) -> pygame.Surface | None:
         """Retorna una Surface cuadrada (side x side) con la imagen 1:1 escalada (cached).
@@ -4606,23 +4677,23 @@ class Level2Screen(Screen):
         """
         if side <= 0:
             return None
-        
+      
         # Cache key por ruta y tamaño
         cache_key = (image_path, int(side))
         if cache_key in self._image_cache:
             return self._image_cache[cache_key]
-        
+      
         # Intentar cargar imagen
         if not os.path.isfile(image_path):
             self._image_cache[cache_key] = None
             return None
-        
+      
         try:
             raw_img = pygame.image.load(image_path).convert_alpha()
         except Exception:
             self._image_cache[cache_key] = None
             return None
-        
+      
         # recortar transparencias (min_alpha=1 para eliminar todo el espacio vacío)
         try:
             bbox = raw_img.get_bounding_rect(min_alpha=1)
@@ -4632,7 +4703,6 @@ class Level2Screen(Screen):
                 cropped = raw_img
         except Exception:
             cropped = raw_img
-
         # ajustar a cuadrado manteniendo aspecto
         cw, ch = cropped.get_size()
         if cw <= 0 or ch <= 0:
@@ -4642,21 +4712,17 @@ class Level2Screen(Screen):
         new_w = max(1, int(cw * scale))
         new_h = max(1, int(ch * scale))
         scaled = pygame.transform.smoothscale(cropped, (new_w, new_h))
-
         # centrar en lienzo cuadrado
         canvas = pygame.Surface((side, side), pygame.SRCALPHA)
         canvas.fill((0, 0, 0, 0))
         x = (side - new_w) // 2
         y = (side - new_h) // 2
         canvas.blit(scaled, (x, y))
-
         self._image_cache[cache_key] = canvas
         return canvas
-
     def actualizar_panel_archivos(self):
         """Actualiza la lista de archivos en el panel izquierdo según el directorio actual"""
         self.hud_elements["left_files"] = []
-
         # Agregar las carpetas (subdirectorios) del directorio actual
         if self.current_directory in self.directory_structure:
             for subdir in self.directory_structure[self.current_directory]:
@@ -4665,55 +4731,46 @@ class Level2Screen(Screen):
                     "size": "--",
                     "type": "Folder"
                 })
-
         # Agregar los archivos del directorio actual
         if self.current_directory in self.files_in_room:
             for archivo in self.files_in_room[self.current_directory]:
                 if not archivo.eliminado:
+                    display_name = archivo.nombre + " (Cuarentena)" if archivo.en_cuarentena else archivo.nombre
                     self.hud_elements["left_files"].append({
-                        "name": archivo.nombre,
+                        "name": display_name,
                         "size": archivo.tamaño,
                         "type": "File",
-                        "object": archivo  # Referencia al objeto real
+                        "object": archivo # Referencia al objeto real
                     })
-
     # =============================================================================
     # MÉTODOS PARA ACCIONES DE ANÁLISIS DE ARCHIVOS
     # =============================================================================
-
     def ejecutar_accion(self, accion, archivo=None):
         """Ejecuta una acción sobre un archivo o directorio"""
         if self.accion_en_progreso:
             self.show_message("Ya hay una acción en progreso...")
             return
-
         # Verificar si el archivo ya fue eliminado
         if archivo and hasattr(archivo, 'eliminado') and archivo.eliminado:
             self.show_message("Este archivo ya fue eliminado")
             return
-
         costo = self.costos_acciones.get(accion, 0)
         if self.recursos < costo:
             self.show_message("¡Recursos insuficientes!")
             return
-
         self.accion_en_progreso = accion
         self.tiempo_accion = 0
         self.archivo_seleccionado = archivo
-
         # Aplicar costo de recursos inmediatamente
         if costo > 0:
             self.recursos -= costo
             self.level2_manager.resource_bar.consume(costo)
             self.show_message(f"Recursos: -{costo} | {self.recursos} restantes")
-
     def actualizar_acciones(self, dt):
         """Actualiza las acciones en progreso y sus temporizadores"""
         if not self.accion_en_progreso:
             return
-
         self.tiempo_accion += dt
-
         if self.tiempo_accion >= self.duracion_escaneo:
             # Acción completada
             if self.accion_en_progreso == "inspeccionar":
@@ -4724,21 +4781,23 @@ class Level2Screen(Screen):
                 self._completar_escaneo_carpeta()
             elif self.accion_en_progreso == "cuarentena":
                 self._completar_cuarentena()
+            elif self.accion_en_progreso == "liberar_cuarentena":
+                self._completar_liberar_cuarentena()
             elif self.accion_en_progreso == "limpiar":
                 self._completar_limpieza()
-
             self.accion_en_progreso = None
             self.archivo_seleccionado = None
-
     def _completar_inspeccion(self):
-        """Completa la acción de inspeccionar un archivo"""
+        """Completa la acción de inspeccionar un archivo - Solo muestra metadatos básicos"""
         if self.archivo_seleccionado:
-            metadatos = self.archivo_seleccionado.obtener_metadatos()
+            # Solo mostrar metadatos genéricos, NO revelar si es virus
             mensaje = f"INSPECCIÓN: {self.archivo_seleccionado.nombre}\n"
-            for key, value in metadatos.items():
-                mensaje += f"{key}: {value}\n"
+            mensaje += f"Extensión: {self.archivo_seleccionado.extension}\n"
+            mensaje += f"Tamaño: {self.archivo_seleccionado.tamaño}\n"
+            mensaje += f"Fecha Modificación: {self.archivo_seleccionado.fecha_mod}\n"
+            mensaje += f"Permisos: {self.archivo_seleccionado.permisos}\n"
+            mensaje += "\n→ Usa ESCANEAR para detectar virus"
             self.show_message(mensaje)
-
     def _completar_escaneo_archivo(self):
         """Completa el escaneo individual de un archivo"""
         if self.archivo_seleccionado:
@@ -4746,29 +4805,21 @@ class Level2Screen(Screen):
             if self.archivo_seleccionado.es_infectado:
                 mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {probabilidad}% riesgo - {self.archivo_seleccionado.tipo_virus.upper()}"
                 self.show_message(mensaje)
-                
-                # SISTEMA EDUCATIVO: Mostrar quiz si no se ha mostrado antes
-                archivo_id = id(self.archivo_seleccionado)
-                if archivo_id not in self.archivos_con_quiz:
-                    self.mostrar_quiz_malware(self.archivo_seleccionado)
-                    self.archivos_con_quiz.add(archivo_id)
+              
             else:
                 # Para archivos limpios, mostrar un porcentaje bajo aleatorio
                 riesgo = random.randint(0, 15)
                 mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {riesgo}% riesgo - LIMPIO"
                 self.show_message(mensaje)
-
     def _completar_escaneo_carpeta(self):
         """Completa el escaneo de la carpeta actual"""
         archivos_riesgo = []
-
         # Escanear subcarpetas
         if self.current_directory in self.directory_structure:
             for subdir in self.directory_structure[self.current_directory]:
                 # Simular riesgo en carpetas
                 riesgo_carpeta = random.randint(0, 30)
                 archivos_riesgo.append((f"[CARPETA] {subdir}", riesgo_carpeta))
-
         # Escanear archivos
         if self.current_directory in self.files_in_room:
             for archivo in self.files_in_room[self.current_directory]:
@@ -4778,40 +4829,37 @@ class Level2Screen(Screen):
                     else:
                         riesgo = random.randint(0, 20)
                     archivos_riesgo.append((archivo.nombre, riesgo))
-
         mensaje = "ESCANEO CARPETA:\n"
-        for nombre, riesgo in archivos_riesgo[:6]:  # Mostrar máximo 6 elementos
+        for nombre, riesgo in archivos_riesgo[:6]: # Mostrar máximo 6 elementos
             estado = "ALTO RIESGO" if riesgo > 50 else "BAJO RIESGO"
             mensaje += f"{nombre}: {riesgo}% - {estado}\n"
         self.show_message(mensaje)
-
     # =============================================================================
     # MÉTODOS DEL SISTEMA EDUCATIVO
     # =============================================================================
-
     def mostrar_quiz_malware(self, archivo):
         """Muestra un quiz educativo sobre el tipo de malware detectado"""
         quiz_data = self.quiz_manager.obtener_quiz(archivo.tipo_virus)
         if not quiz_data:
             return
-        
+      
         # Crear overlay de quiz con botones
         def responder_quiz(opcion_elegida):
             correcta = quiz_data['correcta']
             es_correcto = (opcion_elegida == correcta)
-            
+          
             if es_correcto:
                 # +4 recursos
                 self.recursos += 4
                 self.level2_manager.resource_bar.restore(4)
-                
+              
                 bullets = [
                     f"Correcto: {quiz_data['opciones'][correcta]}",
                     quiz_data['tip'],
                     f"+4 recursos (total: {self.recursos})"
                 ]
                 titulo = "¡Bien hecho!"
-                
+              
                 # Telemetría
                 self.game.player_stats.mistake_log.add_mistake(
                     level=2,
@@ -4827,14 +4875,14 @@ class Level2Screen(Screen):
                 # -2 recursos
                 self.recursos = max(0, self.recursos - 2)
                 self.level2_manager.resource_bar.consume(2)
-                
+              
                 bullets = [
                     f"Incorrecto. Correcta: {quiz_data['opciones'][correcta]}",
                     quiz_data['tip'],
                     f"-2 recursos (total: {self.recursos})"
                 ]
                 titulo = "Aprende de esto"
-                
+              
                 # Telemetría
                 self.game.player_stats.mistake_log.add_mistake(
                     level=2,
@@ -4846,11 +4894,11 @@ class Level2Screen(Screen):
                         "delta_recursos": -2
                     }
                 )
-            
+          
             # Mostrar resultado
             msg = MensajeOverlay('tutor_refuerzo', titulo, bullets, "", prioridad=80)
             self.overlay_educativo.agregar_mensaje(msg)
-        
+      
         # Crear mensaje de quiz con opciones
         bullets = [
             quiz_data['pregunta'],
@@ -4859,29 +4907,29 @@ class Level2Screen(Screen):
             f"B) {quiz_data['opciones'][1]}",
             f"C) {quiz_data['opciones'][2]}"
         ]
-        
+      
         # Por ahora, simplificamos: el quiz se "auto-responde" aleatoriamente
         # En una implementación completa, necesitarías botones interactivos
         import random
-        opcion_elegida = random.randint(0, 2)  # Simula elección del jugador
+        opcion_elegida = random.randint(0, 2) # Simula elección del jugador
         responder_quiz(opcion_elegida)
-    
+  
     def activar_sintomas_directorio_actual(self):
         """Activa síntomas de virus en el directorio actual al entrar por primera vez"""
         if self.current_directory in self.files_in_room:
             for archivo in self.files_in_room[self.current_directory]:
-                if archivo.es_infectado and archivo.tipo_virus and not archivo.eliminado:
+                if archivo.es_infectado and archivo.tipo_virus and not archivo.eliminado and not archivo.en_cuarentena:
                     # Activar síntoma si aún no está activo
                     sintoma = self.gestor_virus.tipos_virus.get(archivo.tipo_virus, {}).get('sintoma')
                     if sintoma and not self.gestor_virus.sintomas_activos.get(sintoma, False):
                         self.gestor_virus.activar_sintoma(archivo.tipo_virus)
                         # El tip se mostrará automáticamente en update() cuando detecte el síntoma activo
-    
+  
     def mostrar_tip_sintoma(self, tipo_malware):
         """Muestra un tip educativo cuando se detecta un síntoma por primera vez"""
         if tipo_malware in self.sintomas_tip_mostrado:
             return
-        
+      
         tip_data = self.gestor_mensajes.obtener_tip(tipo_malware)
         msg = MensajeOverlay(
             'tutor_tip',
@@ -4890,10 +4938,10 @@ class Level2Screen(Screen):
             tip_data['sabias_que'],
             prioridad=60
         )
-        
+      
         if self.overlay_educativo.agregar_mensaje(msg):
             self.sintomas_tip_mostrado.add(tipo_malware)
-    
+  
     def mostrar_refuerzo_sintoma(self, tipo_malware):
         """Muestra refuerzo educativo tras eliminar/aislar un malware"""
         refuerzo_data = self.gestor_mensajes.obtener_refuerzo(tipo_malware)
@@ -4905,7 +4953,7 @@ class Level2Screen(Screen):
             prioridad=80
         )
         self.overlay_educativo.agregar_mensaje(msg)
-    
+  
     def mostrar_error_educativo(self, tipo_error):
         """Muestra mensaje educativo tras un error"""
         error_data = self.gestor_mensajes.obtener_error(tipo_error)
@@ -4917,19 +4965,24 @@ class Level2Screen(Screen):
             prioridad=70
         )
         self.overlay_educativo.agregar_mensaje(msg)
-
+    def is_important_file(self, archivo):
+        """Verifica si el archivo es un archivo importante del sistema (no virus)."""
+        important_files = ["kernel32.dll", "user32.dll", "winlogon.exe"]
+        return self.current_directory == "C:/Windows/System32" and archivo.nombre in important_files
     def _completar_cuarentena(self):
         """Completa la acción de poner en cuarentena un archivo"""
         if self.archivo_seleccionado:
+            if self.archivo_seleccionado.en_cuarentena:
+                self.show_message(f"{self.archivo_seleccionado.nombre} ya está en cuarentena")
+                return
             self.archivo_seleccionado.en_cuarentena = True
-
             if self.archivo_seleccionado.es_infectado:
                 # INTEGRACIÓN: Registrar en Level2GameManager
                 self.level2_manager.file_quarantined(
                     had_virus=True,
                     symptom_type=self.archivo_seleccionado.tipo_virus
                 )
-                
+              
                 # INTEGRACIÓN: Registrar en Excel
                 self.game.player_stats.mistake_log.add_mistake(
                     level=2,
@@ -4941,16 +4994,16 @@ class Level2Screen(Screen):
                         "accion": "cuarentena"
                     }
                 )
-                
+              
                 self.show_message(f"CUARENTENA: {self.archivo_seleccionado.nombre} - Virus aislado")
                 # Programar desactivación de síntoma
                 pygame.time.set_timer(pygame.USEREVENT + 1, 20000)
-                
+              
                 # SISTEMA EDUCATIVO: No mostrar refuerzo aquí (se mostrará cuando se apague el síntoma)
             else:
                 # INTEGRACIÓN: Registrar falso positivo
                 self.level2_manager.file_quarantined(had_virus=False)
-                
+              
                 # INTEGRACIÓN: Registrar error en Excel
                 self.game.player_stats.mistake_log.add_mistake(
                     level=2,
@@ -4962,17 +5015,62 @@ class Level2Screen(Screen):
                         "error": True
                     }
                 )
-                
+              
                 # Penalización por archivo seguro
-                self.recursos -= 5
+                self.recursos -= 8
                 self.mistakes_made += 1
                 # INTEGRACIÓN: Sincronizar ResourceBar del manager
-                self.level2_manager.resource_bar.consume(5)
-                self.show_message(f"ERROR: {self.archivo_seleccionado.nombre} era seguro! -5 recursos")
-                
+                self.level2_manager.resource_bar.consume(8)
+                self.show_message(f"ERROR: {self.archivo_seleccionado.nombre} era seguro! -8 recursos")
+              
                 # SISTEMA EDUCATIVO: Mostrar mensaje de error
                 self.mostrar_error_educativo('cuarentena_seguro')
 
+                # Activar glitch si es archivo importante
+                if self.is_important_file(self.archivo_seleccionado):
+                    self.glitch_active = True
+                    self.glitch_timer = self.glitch_duration
+            # Actualizar panel para reflejar el estado de cuarentena
+            self.actualizar_panel_archivos()
+    def _completar_liberar_cuarentena(self):
+        """Completa la acción de liberar un archivo de cuarentena"""
+        if self.archivo_seleccionado:
+            if not self.archivo_seleccionado.en_cuarentena:
+                self.show_message(f"{self.archivo_seleccionado.nombre} no está en cuarentena")
+                return
+            self.archivo_seleccionado.en_cuarentena = False
+            self.show_message(f"LIBERADO: {self.archivo_seleccionado.nombre} - Sacado de cuarentena")
+            if self.archivo_seleccionado.es_infectado:
+                # Reactivar síntoma inmediatamente si era infectado
+                self.gestor_virus.activar_sintoma(self.archivo_seleccionado.tipo_virus)
+                self.level2_manager.activate_virus_symptom(self.archivo_seleccionado.tipo_virus, self.archivo_seleccionado.nombre)
+                self.show_message(f"ADVERTENCIA: Síntoma reactivado para {self.archivo_seleccionado.tipo_virus}")
+                # Registrar en logs
+                self.game.player_stats.mistake_log.add_mistake(
+                    level=2,
+                    mistake_type="archivo_infectado_liberado",
+                    description=f"Archivo infectado {self.archivo_seleccionado.nombre} liberado de cuarentena",
+                    mistake_details={
+                        "nombre_archivo": self.archivo_seleccionado.nombre,
+                        "tipo_virus": self.archivo_seleccionado.tipo_virus,
+                        "accion": "liberar_cuarentena"
+                    }
+                )
+                # Mostrar error educativo si era infectado
+                self.mostrar_error_educativo('liberar_infectado')
+            else:
+                # Registrar liberación de archivo seguro
+                self.game.player_stats.mistake_log.add_mistake(
+                    level=2,
+                    mistake_type="archivo_limpio_liberado",
+                    description=f"Archivo seguro {self.archivo_seleccionado.nombre} liberado de cuarentena",
+                    mistake_details={
+                        "nombre_archivo": self.archivo_seleccionado.nombre,
+                        "accion": "liberar_cuarentena"
+                    }
+                )
+            # Actualizar panel para reflejar el cambio
+            self.actualizar_panel_archivos()
     def _completar_limpieza(self):
         """Completa la acción de limpiar/eliminar un archivo"""
         if self.archivo_seleccionado:
@@ -4982,17 +5080,16 @@ class Level2Screen(Screen):
                     had_virus=True,
                     symptom_type=self.archivo_seleccionado.tipo_virus
                 )
-                
+              
                 # Éxito - eliminar virus
                 self.archivo_seleccionado.eliminado = True
                 self.viruses_cleaned += 1
-
                 # Desactivar síntoma inmediatamente
                 if self.archivo_seleccionado.tipo_virus:
                     self.gestor_virus.desactivar_sintoma(self.archivo_seleccionado.tipo_virus)
                     # INTEGRACIÓN: Resolver síntoma en el manager
                     self.level2_manager.symptom_manager.deactivate_symptom(self.archivo_seleccionado.tipo_virus)
-                    
+                  
                     # INTEGRACIÓN: Registrar resolución de síntoma en Excel
                     self.game.player_stats.mistake_log.add_mistake(
                         level=2,
@@ -5004,17 +5101,15 @@ class Level2Screen(Screen):
                             "accion": "limpiar"
                         }
                     )
-
                 self.show_message(
                     f"¡VIRUS ELIMINADO! {self.archivo_seleccionado.nombre} - {self.viruses_cleaned}/{self.total_viruses}")
-                    
+                  
                 # SISTEMA EDUCATIVO: Mostrar refuerzo educativo
                 self.mostrar_refuerzo_sintoma(self.archivo_seleccionado.tipo_virus)
-
             else:
                 # INTEGRACIÓN: Registrar error de limpieza
                 self.level2_manager.file_cleaned(had_virus=False)
-                
+              
                 # INTEGRACIÓN: Registrar eliminación incorrecta en Excel
                 self.game.player_stats.mistake_log.add_mistake(
                     level=2,
@@ -5026,7 +5121,7 @@ class Level2Screen(Screen):
                         "error": True
                     }
                 )
-                
+              
                 # Error - eliminar archivo seguro
                 penalizacion = self.costos_acciones["limpiar_seguro"]
                 self.recursos -= penalizacion
@@ -5035,14 +5130,18 @@ class Level2Screen(Screen):
                 self.level2_manager.resource_bar.consume(penalizacion)
                 self.show_message(
                     f"ERROR: Eliminaste archivo seguro! -{penalizacion} recursos")
-                    
+                  
                 # SISTEMA EDUCATIVO: Mostrar mensaje de error
                 self.mostrar_error_educativo('limpiar_seguro')
-            
+
+                # Activar glitch si es archivo importante
+                if self.is_important_file(self.archivo_seleccionado):
+                    self.glitch_active = True
+                    self.glitch_timer = self.glitch_duration
+          
             # Deseleccionar archivo y actualizar panel
             self.archivo_seleccionado = None
             self.actualizar_panel_archivos()
-
     def manejar_evento_cuarentena(self, event):
         """Maneja el evento de temporizador para desactivar síntomas"""
         if event.type == pygame.USEREVENT + 1:
@@ -5052,17 +5151,15 @@ class Level2Screen(Screen):
                             self.gestor_virus.verificar_sintoma_por_archivo(archivo)):
                         self.gestor_virus.desactivar_sintoma(archivo.tipo_virus)
                         self.show_message(f"Síntoma desactivado: {archivo.tipo_virus}")
-                        
+                      
                         # SISTEMA EDUCATIVO: Mostrar refuerzo al resolver síntoma vía cuarentena
                         self.mostrar_refuerzo_sintoma(archivo.tipo_virus)
                         break
             pygame.time.set_timer(pygame.USEREVENT + 1, 0)
-
     def dibujar_sintomas_globales(self, surf):
         """Dibuja los síntomas activos en la parte superior de la pantalla"""
         if not self.gestor_virus.hay_sintomas_activos():
             return
-
         sintomas_texto = "SÍNTOMAS: "
         if self.gestor_virus.sintomas_activos["ralentizacion"]:
             sintomas_texto += "LENTITUD "
@@ -5072,21 +5169,17 @@ class Level2Screen(Screen):
             sintomas_texto += "BLOQUEO "
         if self.gestor_virus.sintomas_activos["teclas_fantasma"]:
             sintomas_texto += "TECLAS "
-
         sintoma_surf = self.fonts["normal"].render(sintomas_texto, True, (255, 50, 50))
         surf.blit(sintoma_surf, (SCREEN_W // 2 - sintoma_surf.get_width() // 2, 5))
-
     def dibujar_progreso_accion(self, surf):
         """Dibuja la barra de progreso de la acción en curso"""
         if not self.accion_en_progreso:
             return
-
         progreso = min(1.0, self.tiempo_accion / self.duracion_escaneo)
         bar_width = 200
         bar_height = 20
         bar_x = SCREEN_W // 2 - bar_width // 2
         bar_y = SCREEN_H - 120
-
         # Fondo de la barra
         pygame.draw.rect(surf, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height))
         # Barra de progreso
@@ -5094,12 +5187,11 @@ class Level2Screen(Screen):
         # Texto
         accion_text = self.fonts["small"].render(f"{self.accion_en_progreso.upper()}...", True, (255, 255, 255))
         surf.blit(accion_text, (bar_x, bar_y - 25))
-
     def handle_event(self, event):
         # SISTEMA EDUCATIVO: Dar prioridad a eventos del overlay
         if self.overlay_educativo.handle_event(event):
-            return  # El overlay consumió el evento
-        
+            return # El overlay consumió el evento
+      
         # Detectar click en botón X del overlay de ransomware
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.gestor_virus.sintomas_activos["pantalla_bloqueada"] and not self.ransomware_overlay_oculto:
@@ -5108,25 +5200,25 @@ class Level2Screen(Screen):
                 panel_h = 400
                 panel_x = (SCREEN_W - panel_w) // 2
                 panel_y = (SCREEN_H - panel_h) // 2
-                
+              
                 boton_x_size = 30
                 boton_x_rect = pygame.Rect(panel_x + panel_w - boton_x_size - 10, panel_y + 10, boton_x_size, boton_x_size)
-                
+              
                 if boton_x_rect.collidepoint(event.pos):
                     # Ocultar el overlay por 7 segundos
                     self.ransomware_overlay_oculto = True
-                    self.ransomware_overlay_timer = 7000  # 7000 ms = 7 segundos
-                    return  # Consumir el evento
-        
+                    self.ransomware_overlay_timer = 7000 # 7000 ms = 7 segundos
+                    return # Consumir el evento
+      
         if event.type == pygame.USEREVENT + 1:
             self.manejar_evento_cuarentena(event)
-        
+      
         # Manejo de scroll del log con rueda del mouse
         if event.type == pygame.MOUSEWHEEL:
             log_rect = self.hud_rects["bottom_log"]
             if log_rect.collidepoint(pygame.mouse.get_pos()):
                 self.log_scroll_offset = max(0, min(self.log_max_scroll, self.log_scroll_offset - event.y))
-        
+      
         # Drag del scrollbar del log
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             log_rect = self.hud_rects["bottom_log"]
@@ -5136,10 +5228,10 @@ class Level2Screen(Screen):
                 self.log_scrollbar_dragging = True
                 self.log_drag_start_y = event.pos[1]
                 self.log_drag_start_offset = self.log_scroll_offset
-        
+      
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.log_scrollbar_dragging = False
-            
+          
             # Navegación por puertas al soltar el clic
             if self.pressed_door and not self.in_transition:
                 if self.current_directory in self.doors:
@@ -5150,17 +5242,17 @@ class Level2Screen(Screen):
                             if door_rect.collidepoint(mx, my):
                                 self.start_transition(target_dir, door_rect)
                             break
-            
+          
             self.pressed_door = None
             self.pressed_file = None
-        
+      
         if event.type == pygame.MOUSEMOTION and self.log_scrollbar_dragging:
             log_rect = self.hud_rects["bottom_log"]
             scrollbar_h = log_rect.h - 20
             line_height = self.fonts["small"].get_height() + 2
             visible_lines = (log_rect.h - 20) // line_height
             total_lines = len(self.log_lines)
-            
+          
             if total_lines > visible_lines:
                 delta_y = event.pos[1] - self.log_drag_start_y
                 handle_h = max(20, int(scrollbar_h * (visible_lines / total_lines)))
@@ -5168,66 +5260,56 @@ class Level2Screen(Screen):
                 if scroll_range > 0:
                     scroll_delta = int((delta_y / scroll_range) * self.log_max_scroll)
                     self.log_scroll_offset = max(0, min(self.log_max_scroll, self.log_drag_start_offset + scroll_delta))
-
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.paused = not self.paused
             elif self.state == "tutor_inicial" and event.key == pygame.K_RETURN:
                 self.state = "jugando"
             # Interacciones de juego ahora son solo con mouse
-
         # CLICK IZQUIERDO
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.state == "jugando" and not self.accion_en_progreso:
-
                 # --------------------------- HERRAMIENTAS ---------------------------
                 for i, button_rect in enumerate(self.tool_button_rects):
                     if button_rect.collidepoint(event.pos):
                         tool_name = self.hud_elements["tools"][i]
-
                         if tool_name == "Inspeccionar":
                             if self.archivo_seleccionado:
                                 self.ejecutar_accion("inspeccionar", self.archivo_seleccionado)
                             else:
                                 self.show_message("Selecciona un archivo primero")
-
                         elif tool_name == "Escanear":
                             if self.archivo_seleccionado:
                                 self.ejecutar_accion("escanear_archivo", self.archivo_seleccionado)
                             else:
                                 self.ejecutar_accion("escanear_carpeta")
-
                         elif tool_name == "Cuarentena":
                             if self.archivo_seleccionado:
-                                self.ejecutar_accion("cuarentena", self.archivo_seleccionado)
+                                if self.archivo_seleccionado.en_cuarentena:
+                                    self.ejecutar_accion("liberar_cuarentena", self.archivo_seleccionado)
+                                else:
+                                    self.ejecutar_accion("cuarentena", self.archivo_seleccionado)
                             else:
                                 self.show_message("Selecciona un archivo primero")
-
                         elif tool_name == "Limpiar":
                             if self.archivo_seleccionado:
                                 self.ejecutar_accion("limpiar", self.archivo_seleccionado)
                             else:
                                 self.show_message("Selecciona un archivo primero")
-
-                        return  # dejar de procesar más clics
-
+                        return # dejar de procesar más clics
                 # ------------------------ SELECCIÓN DE ARCHIVOS ------------------------
                 file_rect = self.hud_rects["left_files"].copy()
                 file_rect.y += 35
                 file_rect.x += 10
                 file_rect.width -= 20
-
                 for file_info in self.hud_elements["left_files"]:
                     item_rect = pygame.Rect(file_rect.x, file_rect.y, file_rect.width, 25)
-
                     if item_rect.collidepoint(event.pos) and file_info["type"] == "File":
                         # Al hacer clic, guardar el archivo seleccionado real
                         self.archivo_seleccionado = file_info["object"]
                         self.show_message(f"Archivo seleccionado: {self.archivo_seleccionado.nombre}")
                         return
-
                     file_rect.y += 30
-
                 # --------------------------- PUERTAS (click en panel central) ---------------------------
                 if self.current_directory in self.doors and not self.in_transition:
                     for door_name, (door_rect, target_dir) in self.doors[self.current_directory].items():
@@ -5235,7 +5317,6 @@ class Level2Screen(Screen):
                             self.pressed_door = door_rect
                             # No navegar aún, esperar al mouseup
                             return
-
                 # --------------------------- ARCHIVOS EN PANEL CENTRAL ---------------------------
                 if self.current_directory in self.files_in_room:
                     for archivo in self.files_in_room[self.current_directory]:
@@ -5246,47 +5327,45 @@ class Level2Screen(Screen):
                             self.archivo_seleccionado = archivo
                             self.show_message(f"Archivo seleccionado: {archivo.nombre}")
                             return
-
     def update(self, dt):
         if self.paused:
             return
-        
+      
         # No actualizar el juego si estamos en el tutor
         if self.state == "tutor_inicial":
             return
-        
+      
         if self.state != "jugando":
             return
-
         self.actualizar_acciones(dt)
         self.game_time += dt
-        
+      
         # INTEGRACIÓN: Actualizar Level2GameManager
         self.level2_manager.update(dt)
-        
+      
         # INTEGRACIÓN: Sincronizar recursos con el manager
         self.recursos = max(0, int(self.level2_manager.resource_bar.current))
-        
+      
         # ANIMACIÓN: Suavizar el número de recursos mostrado
         # Interpolar suavemente hacia el valor real
         diferencia = self.recursos - self.recursos_display
-        velocidad_animacion = 3.0  # Velocidad de interpolación (mayor = más rápido)
+        velocidad_animacion = 3.0 # Velocidad de interpolación (mayor = más rápido)
         self.recursos_display += diferencia * velocidad_animacion * (dt / 1000.0)
-        
+      
         # Si está muy cerca, snappear al valor exacto
         if abs(diferencia) < 0.5:
             self.recursos_display = float(self.recursos)
-        
+      
         # SISTEMA EDUCATIVO: Actualizar overlay (cooldowns)
         self.overlay_educativo.update(dt)
-        
+      
         # Control de overlay de ransomware oculto temporalmente
         if self.ransomware_overlay_oculto:
             self.ransomware_overlay_timer -= dt
             if self.ransomware_overlay_timer <= 0:
                 self.ransomware_overlay_oculto = False
                 self.ransomware_overlay_timer = 0
-        
+      
         # Actualizar teclas fantasma (spyware)
         if self.gestor_virus.sintomas_activos["teclas_fantasma"]:
             # Actualizar caracteres flotantes cada 400ms
@@ -5297,14 +5376,14 @@ class Level2Screen(Screen):
                 self.teclas_fantasma_caracteres = []
                 caracteres_pool = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?/~"
                 colores = [(0, 255, 100), (255, 255, 0), (255, 100, 100)]
-                
+              
                 for _ in range(random.randint(8, 12)):
                     char = random.choice(caracteres_pool)
                     x = random.randint(50, SCREEN_W - 50)
                     y = random.randint(80, SCREEN_H - 80)
                     color = random.choice(colores)
                     self.teclas_fantasma_caracteres.append((char, x, y, color))
-            
+          
             # Actualizar keylogger simulado cada 800ms
             self.keylog_timer += dt
             if self.keylog_timer >= 800:
@@ -5315,7 +5394,7 @@ class Level2Screen(Screen):
                 # Limitar longitud
                 if len(self.keylog_texto) > 40:
                     self.keylog_texto = self.keylog_texto[-40:]
-        
+      
         # SISTEMA EDUCATIVO: Mostrar tip cuando un síntoma se activa
         for sintoma, activo in self.gestor_virus.sintomas_activos.items():
             if activo and sintoma not in self.sintomas_tip_mostrado:
@@ -5329,39 +5408,34 @@ class Level2Screen(Screen):
                     tipo_malware = "miner"
                 elif sintoma == "teclas_fantasma":
                     tipo_malware = "spyware"
-                
+              
                 if tipo_malware:
                     self.mostrar_tip_sintoma(tipo_malware)
                     self.sintomas_tip_mostrado.add(sintoma)
-
         # BLOQUEAR TODO SI ESTÁ EN TRANSICIÓN
         if self.in_transition:
             self.transition_time += dt
             progress = min(1.0, self.transition_time / self.transition_duration)
-
             if progress >= 1.0:
                 self.in_transition = False
                 self.current_directory = self.transition_target
                 self.actualizar_panel_archivos()
-                
+              
                 # SISTEMA EDUCATIVO: Activar síntomas de virus en el directorio actual
                 self.activar_sintomas_directorio_actual()
-                
-                print(f"DEBUG: Llegué a {self.current_directory}")  # Para debug
+              
+                print(f"DEBUG: Llegué a {self.current_directory}") # Para debug
             return
         # MODO MOUSE-ONLY: actualizar resaltados por hover
         self.near_door = None
         self.near_file = None
-
         mouse_pos = pygame.mouse.get_pos()
-
         # Puertas bajo el mouse
         if self.current_directory in self.doors:
             for door_name, (door_rect, target_dir) in self.doors[self.current_directory].items():
                 if door_rect.collidepoint(mouse_pos):
                     self.near_door = (door_name, door_rect, target_dir)
                     break
-
         # Archivos bajo el mouse
         if self.current_directory in self.files_in_room:
             for archivo in self.files_in_room[self.current_directory]:
@@ -5371,8 +5445,13 @@ class Level2Screen(Screen):
                     self.near_file = archivo
                     break
 
-        self.check_game_state()
+        # Actualizar timer de glitch
+        if self.glitch_timer > 0:
+            self.glitch_timer -= dt
+            if self.glitch_timer <= 0:
+                self.glitch_active = False
 
+        self.check_game_state()
     def start_transition(self, target_directory, door_rect):
         """Inicia una transición a un nuevo directorio (interacción solo con mouse)."""
         if self.in_transition:
@@ -5382,30 +5461,29 @@ class Level2Screen(Screen):
         self.transition_target = target_directory
         self.previous_directory = self.current_directory
         self.show_message(f"Cambiando a {target_directory}...")
-
     def check_game_state(self):
         # INTEGRACIÓN: Usar los checkers del manager
         if self.level2_manager.victory_checker.check_victory():
             # INTEGRACIÓN: Guardar datos a Excel al ganar
             self.game.player_stats.complete_level()
-            
+          
             # Verificar si ambos niveles (1 y 2) están completos para quiz final
             completed = self.game.player_stats.completed_levels
             if len(completed) >= 2:
                 # Ir al quiz final
                 self.game.change_screen(QuizScreen(self.game, mode='post', next_screen=MenuScreen(self.game)))
                 return
-            
+          
             # Si no hay quiz final, mostrar victoria normal
             mensaje = f"Virus eliminados: {self.viruses_cleaned}/{self.total_viruses}"
             self.game.change_screen(VictoryVideoScreen(self.game, mensaje))
-            
+          
         elif self.level2_manager.defeat_checker.check_defeat():
             # Determinar razón de derrota
             razon = ""
             if self.recursos <= 0:
                 razon = "¡Te has quedado sin recursos!"
-                
+              
                 # INTEGRACIÓN: Registrar derrota por recursos
                 self.game.player_stats.mistake_log.add_mistake(
                     level=2,
@@ -5413,61 +5491,65 @@ class Level2Screen(Screen):
                     description="Derrota: Se agotaron los recursos",
                     mistake_details={"recursos_restantes": 0}
                 )
-                
+              
             elif self.mistakes_made >= self.max_mistakes:
                 razon = "¡Has cometido demasiados errores!"
             else:
                 razon = "¡Derrota!"
-            
+          
             # INTEGRACIÓN: Guardar datos a Excel al perder también
             self.game.player_stats.complete_level()
-            
+          
             # Cambiar a pantalla de video de derrota
             self.game.change_screen(DefeatVideoScreen(self.game, razon))
-
     def show_message(self, message, duration=None):
         self.current_message = message
         self.effect_timers["message"] = duration or self.message_duration
-
     def draw_panel_title(self, surf, rect, title):
         text = self.fonts["title"].render(title, True, self.hud_colors["text"])
         text_rect = text.get_rect(midtop=(rect.centerx, rect.top + 5))
         surf.blit(text, text_rect)
-
+    def apply_glitch(self, surf):
+        """Aplica un efecto visual de glitch a la superficie."""
+        for _ in range(20):  # Número de elementos de glitch
+            x = random.randint(0, SCREEN_W - 1)
+            y = random.randint(0, SCREEN_H - 1)
+            w = random.randint(10, 100)
+            h = random.randint(1, 10)
+            color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+            pygame.draw.rect(surf, color, (x, y, w, h))
     def render(self, surf):
         surf.fill((0, 0, 0))
-
         # SÍNTOMA: Ralentización (Miner)
         if self.gestor_virus.sintomas_activos["ralentizacion"]:
             if pygame.time.get_ticks() % 1000 < 500:
                 surf.fill((30, 30, 60), special_flags=pygame.BLEND_RGB_ADD)
-
         if self.state == "tutor_inicial":
             # Pantalla de bienvenida del tutor
             surf.fill((10, 15, 25))
-            
+          
             # Cuadro central
             box_width = 800
             box_height = 550
             box_x = (SCREEN_W - box_width) // 2
             box_y = (SCREEN_H - box_height) // 2
             box_rect = pygame.Rect(box_x, box_y, box_width, box_height)
-            
+          
             # Fondo del cuadro
             pygame.draw.rect(surf, (20, 30, 50), box_rect, border_radius=15)
             pygame.draw.rect(surf, (0, 200, 255), box_rect, 3, border_radius=15)
-            
+          
             # Título
             titulo = self.fonts["title"].render("TUTOR DEL SISTEMA", True, (0, 255, 255))
             surf.blit(titulo, (box_rect.centerx - titulo.get_width() // 2, box_y + 20))
-            
+          
             # Líneas del mensaje
             y_offset = box_y + 70
             for linea in self.tutor_mensaje:
                 if linea == "":
                     y_offset += 15
                     continue
-                
+              
                 # Detectar si es título (tiene ":" al final)
                 if linea.startswith("¡") or linea.startswith("Tu misión") or linea.startswith("Herramientas"):
                     color = (255, 255, 100)
@@ -5481,10 +5563,10 @@ class Level2Screen(Screen):
                 else:
                     color = (220, 220, 220)
                     texto = self.fonts["small"].render(linea, True, color)
-                
+              
                 surf.blit(texto, (box_x + 40, y_offset))
                 y_offset += 22
-            
+          
         elif self.state == "jugando":
             # Dibujar paneles
             for name, rect in self.hud_rects.items():
@@ -5492,7 +5574,6 @@ class Level2Screen(Screen):
                 pygame.draw.rect(surf, self.hud_colors["background"], rect)
                 border_color = self.hud_colors["highlight"] if name == self.active_panel else self.hud_colors["border"]
                 pygame.draw.rect(surf, border_color, rect, 3 if name == self.active_panel else 2, border_radius=5)
-
             # Barra de recursos
             resource_rect = self.hud_rects["resource_bar"]
             pygame.draw.rect(surf, (10, 10, 10), resource_rect)
@@ -5501,44 +5582,40 @@ class Level2Screen(Screen):
                                                 resource_rect.height - 4)
             pygame.draw.rect(surf, self.hud_colors["resource"], current_resource_rect)
             pygame.draw.rect(surf, self.hud_colors["border"], resource_rect, 1)
-            
+          
             # NUEVO: Indicador numérico de recursos con animación
             recursos_texto = f"{int(self.recursos_display)}/100"
-            
+          
             # Color del texto basado en cantidad de recursos
             if self.recursos_display > 60:
-                color_texto = (255, 255, 255)  # Blanco
+                color_texto = (255, 255, 255) # Blanco
             elif self.recursos_display > 30:
-                color_texto = (255, 255, 0)    # Amarillo (advertencia)
+                color_texto = (255, 255, 0) # Amarillo (advertencia)
             else:
-                color_texto = (255, 100, 100)  # Rojo (peligro)
-            
+                color_texto = (255, 100, 100) # Rojo (peligro)
+          
             # Renderizar texto con sombra para mejor visibilidad
             texto_recursos = self.fonts["normal"].render(recursos_texto, True, color_texto)
             texto_shadow = self.fonts["normal"].render(recursos_texto, True, (0, 0, 0))
-            
+          
             # Posicionar en el centro de la barra
             texto_x = resource_rect.centerx - texto_recursos.get_width() // 2
             texto_y = resource_rect.centery - texto_recursos.get_height() // 2
-            
+          
             # Dibujar sombra y texto
             surf.blit(texto_shadow, (texto_x + 1, texto_y + 1))
             surf.blit(texto_recursos, (texto_x, texto_y))
-
             # Síntomas globales
             self.dibujar_sintomas_globales(surf)
-
             # Títulos
             self.draw_panel_title(surf, self.hud_rects["left_files"], "Archivos")
             self.draw_panel_title(surf, self.hud_rects["center_preview"], "Sistema")
             self.draw_panel_title(surf, self.hud_rects["right_tools"], "Herramientas")
-
             # Panel izquierdo - ARCHIVOS DEL DIRECTORIO ACTUAL
             file_rect = self.hud_rects["left_files"].copy()
             file_rect.y += 35
             file_rect.x += 10
             file_rect.width -= 20
-
             for file_info in self.hud_elements["left_files"]:
                 # Icono (azul para carpetas, gris para archivos)
                 icon_rect = pygame.Rect(file_rect.x, file_rect.y + 2, 16, 16)
@@ -5546,33 +5623,30 @@ class Level2Screen(Screen):
                     pygame.draw.rect(surf, (100, 100, 255), icon_rect)
                 else:
                     pygame.draw.rect(surf, self.hud_colors["border"], icon_rect)
-
                 # Nombre
                 text = self.fonts["normal"].render(file_info["name"], True, self.hud_colors["text"])
                 surf.blit(text, (file_rect.x + 22, file_rect.y))
                 file_rect.y += 25
                 if file_rect.y > self.hud_rects["left_files"].bottom - 20:
                     break
-
             # Herramientas
             for i, tool_name in enumerate(self.hud_elements["tools"]):
                 button_rect = self.tool_button_rects[i]
                 # Borde fijo
                 pygame.draw.rect(surf, self.hud_colors["border"], button_rect, border_radius=5)
-                
+              
                 # Hover blanco
                 if button_rect.collidepoint(pygame.mouse.get_pos()):
                     pygame.draw.rect(surf, (255, 255, 255), button_rect, 2, border_radius=5)
-
                 # Dibujar icono de herramienta (imagen personalizada o fallback) - más grande
                 icon_size = 32
                 icon_rect = pygame.Rect(button_rect.x + 8, button_rect.y + (button_rect.height - icon_size) // 2, icon_size, icon_size)
                 tool_img_path = self.tool_images.get(tool_name)
                 tool_img = None
-                
+              
                 if tool_img_path:
                     tool_img = self._get_image_scaled(tool_img_path, icon_size)
-                
+              
                 if tool_img is not None:
                     # Dibujar imagen centrada en el área del icono
                     img_rect = tool_img.get_rect(center=icon_rect.center)
@@ -5580,75 +5654,75 @@ class Level2Screen(Screen):
                 else:
                     # Fallback: rectángulo cyan si no hay imagen
                     pygame.draw.rect(surf, self.hud_colors["highlight"], icon_rect)
-
-                # Texto más grande usando fuente title
-                text = self.fonts["title"].render(tool_name, True, self.hud_colors["text"])
+                # Texto dinámico para Cuarentena/Liberar
+                display_tool_name = tool_name
+                if tool_name == "Cuarentena" and self.archivo_seleccionado and self.archivo_seleccionado.en_cuarentena:
+                    display_tool_name = "Liberar"
+                text = self.fonts["title"].render(display_tool_name, True, self.hud_colors["text"])
                 text_y = button_rect.y + (button_rect.height - text.get_height()) // 2
                 surf.blit(text, (button_rect.x + 48, text_y))
-
             # Log - Soporta saltos de línea con scroll bar
             log_rect = self.hud_rects["bottom_log"]
             # Dividir el mensaje en líneas respetando \n y añadir ">" al inicio
             self.log_lines = [f"> {line}" for line in self.current_message.split('\n')]
-            
+          
             line_height = self.fonts["small"].get_height() + 2
             visible_area = pygame.Rect(log_rect.x + 10, log_rect.y + 10, log_rect.w - 40, log_rect.h - 20)
             max_visible_lines = visible_area.h // line_height
             total_lines = len(self.log_lines)
-            
+          
             # Calcular scroll
             needs_scrollbar = total_lines > max_visible_lines
             self.log_max_scroll = max(0, total_lines - max_visible_lines)
             self.log_scroll_offset = max(0, min(self.log_scroll_offset, self.log_max_scroll))
-            
+          
             # Renderizar líneas con clipping
             prev_clip = surf.get_clip()
             surf.set_clip(visible_area)
-            
+          
             y_offset = visible_area.y
             for i in range(self.log_scroll_offset, min(self.log_scroll_offset + max_visible_lines + 2, total_lines)):
                 if y_offset < visible_area.bottom:
                     text = self.fonts["small"].render(self.log_lines[i], True, self.hud_colors["text"])
                     surf.blit(text, (visible_area.x, y_offset))
                     y_offset += line_height
-            
+          
             surf.set_clip(prev_clip)
-            
+          
             # Scrollbar
             if needs_scrollbar:
                 scrollbar_x = log_rect.right - 20
                 scrollbar_y = log_rect.y + 10
                 scrollbar_h = log_rect.h - 20
                 scrollbar_w = 10
-                
+              
                 # Fondo del scrollbar
                 scrollbar_bg = pygame.Rect(scrollbar_x, scrollbar_y, scrollbar_w, scrollbar_h)
                 pygame.draw.rect(surf, (40, 40, 60), scrollbar_bg, border_radius=5)
-                
+              
                 # Manija del scrollbar
                 handle_h = max(20, int(scrollbar_h * (max_visible_lines / total_lines)))
                 handle_y = scrollbar_y + int((scrollbar_h - handle_h) * (self.log_scroll_offset / self.log_max_scroll)) if self.log_max_scroll > 0 else scrollbar_y
                 handle_rect = pygame.Rect(scrollbar_x, handle_y, scrollbar_w, handle_h)
                 pygame.draw.rect(surf, (100, 100, 140), handle_rect, border_radius=5)
-
             # Puertas
             if self.current_directory in self.doors:
                 for door_name, (door_rect, _) in self.doors[self.current_directory].items():
                     # Determinar si es puerta Back y seleccionar imagen apropiada
                     is_back_door = door_name == "Back"
                     img_path = self.back_door_image_path if is_back_door else self.door_image_path
-                    
+                  
                     # Calcular escala: 1.15x en hover, 0.95x si presionada
                     is_hovered = self.near_door and self.near_door[1] == door_rect
                     is_pressed = self.pressed_door == door_rect
                     scale = 0.95 if is_pressed else (1.15 if is_hovered else 1.0)
-                    
+                  
                     # Intentar dibujar imagen 1:1 centrada dentro del rect de la puerta
                     pad = 6
                     base_side = max(1, min(max(0, door_rect.w - pad * 2), max(0, door_rect.h - pad * 2)))
                     side = int(base_side * scale)
                     img = self._get_image_scaled(img_path, side)
-                    
+                  
                     if img is not None:
                         dst = img.get_rect(center=door_rect.center)
                         # Offset de hundimiento si está presionada
@@ -5667,7 +5741,7 @@ class Level2Screen(Screen):
                         text = self.fonts["normal"].render(door_name, True, (0, 0, 0))
                         text_rect = text.get_rect(center=scaled_rect.center)
                         surf.blit(text, text_rect)
-                    
+                  
                     # Mostrar nombre de la puerta en hover
                     if is_hovered:
                         color_hi = self.hud_colors["door_highlight"]
@@ -5675,19 +5749,15 @@ class Level2Screen(Screen):
                         indicator_pos = (door_rect.centerx, door_rect.top - 20)
                         text_rect = indicator_text.get_rect(center=indicator_pos)
                         surf.blit(indicator_text, text_rect)
-
             # Archivos en el directorio actual
             if self.current_directory in self.files_in_room:
                 for archivo in self.files_in_room[self.current_directory]:
                     if archivo.eliminado:
                         continue
-
                     file_rect = archivo.rect
-
                     # Calcular escala: 1.15x en hover solamente (sin efecto de presionado)
                     is_hovered = self.near_file and self.near_file.nombre == archivo.nombre
                     scale = 1.15 if is_hovered else 1.0
-
                     # Color según estado (para borde o fallback)
                     if archivo.en_cuarentena:
                         color = (255, 165, 0)
@@ -5697,11 +5767,9 @@ class Level2Screen(Screen):
                         color = (255, 255, 0)
                     else:
                         color = (200, 200, 200)
-
                     # Resaltar si está seleccionado con borde blanco
                     if self.archivo_seleccionado and self.archivo_seleccionado.nombre == archivo.nombre:
                         pygame.draw.rect(surf, (255, 255, 255), file_rect.inflate(6, 6), 2, border_radius=4)
-
                     # Intentar dibujar imagen personalizada del archivo con escala
                     if archivo.image_path:
                         pad = 2
@@ -5731,7 +5799,7 @@ class Level2Screen(Screen):
                         nombre_text = self.fonts["small"].render(nombre_corto, True, (0, 0, 0))
                         text_rect = nombre_text.get_rect(center=scaled_rect.center)
                         surf.blit(nombre_text, text_rect)
-                    
+                  
                     # Mostrar nombre del archivo en hover
                     if is_hovered:
                         color_txt = (255, 255, 255)
@@ -5739,19 +5807,15 @@ class Level2Screen(Screen):
                         indicator_pos = (file_rect.centerx, file_rect.top - 10)
                         text_rect = indicator_text.get_rect(center=indicator_pos)
                         surf.blit(indicator_text, text_rect)
-
             # Directorio actual y archivo seleccionado
             dir_text = self.fonts["title"].render(f"Directory: {self.current_directory}", True, (255, 255, 255))
             surf.blit(dir_text, (10, 10))
-
             if self.archivo_seleccionado:
                 sel_text = self.fonts["normal"].render(f"Seleccionado: {self.archivo_seleccionado.nombre}", True,
                                                        (0, 255, 255))
                 surf.blit(sel_text, (SCREEN_W - sel_text.get_width() - 10, 10))
-
             # Progreso de acciones
             self.dibujar_progreso_accion(surf)
-
             if self.in_transition:
                 progress = self.transition_time / self.transition_duration
                 alpha = int(255 * (0.5 - abs(0.5 - progress)))
@@ -5759,7 +5823,6 @@ class Level2Screen(Screen):
                 overlay.fill((0, 0, 0))
                 overlay.set_alpha(alpha)
                 surf.blit(overlay, (0, 0))
-
         if self.paused:
             overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 150))
@@ -5767,13 +5830,13 @@ class Level2Screen(Screen):
             pausa_text = self.fonts["title"].render("PAUSA", True, (255, 255, 255))
             surf.blit(pausa_text,
                       (SCREEN_W // 2 - pausa_text.get_width() // 2, SCREEN_H // 2 - pausa_text.get_height() // 2))
-        
+      
         # SÍNTOMA: Pop-ups (Adware) - Renderizar al final para que aparezcan sobre toda la interfaz
         if self.gestor_virus.sintomas_activos["popups"]:
             # Generar 2-4 pop-ups molestos en posiciones aleatorias
             tiempo_actual = pygame.time.get_ticks()
-            random.seed(tiempo_actual // 2000)  # Cambiar cada 2 segundos
-            
+            random.seed(tiempo_actual // 2000) # Cambiar cada 2 segundos
+          
             num_popups = random.randint(2, 4)
             for i in range(num_popups):
                 # Posiciones semi-aleatorias pero consistentes
@@ -5781,22 +5844,22 @@ class Level2Screen(Screen):
                 popup_y = 100 + random.randint(0, 300)
                 popup_w = 180
                 popup_h = 100
-                
+              
                 popup_rect = pygame.Rect(popup_x, popup_y, popup_w, popup_h)
-                
+              
                 # Fondo del pop-up (colores llamativos)
                 colores_fondo = [(255, 50, 50), (255, 150, 0), (255, 255, 0), (255, 0, 255)]
                 color_popup = colores_fondo[i % len(colores_fondo)]
                 pygame.draw.rect(surf, color_popup, popup_rect, border_radius=8)
                 pygame.draw.rect(surf, (255, 255, 255), popup_rect, 3, border_radius=8)
-                
+              
                 # Botón X (cerrar) en esquina superior derecha
                 close_btn = pygame.Rect(popup_rect.right - 25, popup_rect.top + 5, 20, 20)
                 pygame.draw.rect(surf, (200, 0, 0), close_btn, border_radius=3)
                 x_text = self.fonts["small"].render("X", True, (255, 255, 255))
-                surf.blit(x_text, (close_btn.centerx - x_text.get_width() // 2, 
+                surf.blit(x_text, (close_btn.centerx - x_text.get_width() // 2,
                                   close_btn.centery - x_text.get_height() // 2))
-                
+              
                 # Textos del anuncio
                 textos_anuncio = [
                     ["¡GANASTE!", "¡Haz clic aquí!"],
@@ -5805,17 +5868,17 @@ class Level2Screen(Screen):
                     ["¡VIRUS!", "Escanea ahora"]
                 ]
                 texto_popup = textos_anuncio[i % len(textos_anuncio)]
-                
+              
                 # Título del pop-up
                 titulo_popup = self.fonts["normal"].render(texto_popup[0], True, (0, 0, 0))
-                surf.blit(titulo_popup, (popup_rect.centerx - titulo_popup.get_width() // 2, 
+                surf.blit(titulo_popup, (popup_rect.centerx - titulo_popup.get_width() // 2,
                                         popup_rect.y + 15))
-                
+              
                 # Subtítulo
                 subtitulo = self.fonts["small"].render(texto_popup[1], True, (50, 50, 50))
-                surf.blit(subtitulo, (popup_rect.centerx - subtitulo.get_width() // 2, 
+                surf.blit(subtitulo, (popup_rect.centerx - subtitulo.get_width() // 2,
                                      popup_rect.y + 45))
-                
+              
                 # Botón "Clic aquí"
                 boton_rect = pygame.Rect(popup_rect.centerx - 60, popup_rect.bottom - 35, 120, 25)
                 pygame.draw.rect(surf, (0, 200, 0), boton_rect, border_radius=5)
@@ -5823,12 +5886,12 @@ class Level2Screen(Screen):
                 boton_text = self.fonts["small"].render("¡Clic aquí!", True, (255, 255, 255))
                 surf.blit(boton_text, (boton_rect.centerx - boton_text.get_width() // 2,
                                       boton_rect.centery - boton_text.get_height() // 2))
-        
+      
         # Mostrar contador cuando el overlay de ransomware está temporalmente oculto
         if self.gestor_virus.sintomas_activos["pantalla_bloqueada"] and self.ransomware_overlay_oculto:
             # Calcular segundos restantes
-            segundos_restantes = int(self.ransomware_overlay_timer / 1000) + 1  # +1 para redondear hacia arriba
-            
+            segundos_restantes = int(self.ransomware_overlay_timer / 1000) + 1 # +1 para redondear hacia arriba
+          
             # Panel en la parte inferior del panel de herramientas (lado derecho)
             tools_rect = self.hud_rects["right_tools"]
             timer_w = tools_rect.width - 20
@@ -5836,7 +5899,7 @@ class Level2Screen(Screen):
             timer_x = tools_rect.x + 10
             timer_y = tools_rect.bottom - timer_h - 10
             timer_rect = pygame.Rect(timer_x, timer_y, timer_w, timer_h)
-            
+          
             # Fondo semi-transparente (rojo oscuro parpadeante)
             timer_bg = pygame.Surface((timer_w, timer_h), pygame.SRCALPHA)
             if pygame.time.get_ticks() % 1000 < 500:
@@ -5844,68 +5907,68 @@ class Level2Screen(Screen):
             else:
                 timer_bg.fill((150, 0, 0, 220))
             surf.blit(timer_bg, (timer_x, timer_y))
-            
+          
             # Borde rojo
             pygame.draw.rect(surf, (255, 0, 0), timer_rect, 3, border_radius=8)
-            
+          
             # Texto de advertencia
             warning_text = self.fonts["small"].render("Bloqueo en:", True, (255, 255, 255))
             surf.blit(warning_text, (timer_x + 10, timer_y + 8))
-            
+          
             # Contador de segundos (grande y parpadeante)
             if pygame.time.get_ticks() % 600 < 300:
                 color_timer = (255, 50, 50)
             else:
                 color_timer = (255, 150, 150)
-            
+          
             timer_text = self.fonts["title"].render(f"{segundos_restantes}s", True, color_timer)
             surf.blit(timer_text, (timer_rect.centerx - timer_text.get_width() // 2, timer_y + 30))
-        
+      
         # SÍNTOMA: Pantalla Bloqueada (Ransomware)
         if self.gestor_virus.sintomas_activos["pantalla_bloqueada"] and not self.ransomware_overlay_oculto:
             # Overlay rojo semi-transparente sobre toda la pantalla
             overlay_ransomware = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-            overlay_ransomware.fill((150, 0, 0, 180))  # Rojo oscuro con transparencia
+            overlay_ransomware.fill((150, 0, 0, 180)) # Rojo oscuro con transparencia
             surf.blit(overlay_ransomware, (0, 0))
-            
+          
             # Panel central de "rescate"
             panel_w = 600
             panel_h = 400
             panel_x = (SCREEN_W - panel_w) // 2
             panel_y = (SCREEN_H - panel_h) // 2
             panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
-            
+          
             # Fondo del panel (negro con borde rojo)
             pygame.draw.rect(surf, (20, 0, 0), panel_rect, border_radius=10)
             pygame.draw.rect(surf, (255, 0, 0), panel_rect, 5, border_radius=10)
-            
+          
             # Icono de advertencia (triángulo con !)
             icono_size = 60
             icono_x = panel_rect.centerx
             icono_y = panel_y + 40
-            
+          
             # Triángulo de advertencia
             triangulo_puntos = [
-                (icono_x, icono_y - icono_size // 2),  # Arriba
-                (icono_x - icono_size // 2, icono_y + icono_size // 2),  # Abajo izquierda
-                (icono_x + icono_size // 2, icono_y + icono_size // 2)   # Abajo derecha
+                (icono_x, icono_y - icono_size // 2), # Arriba
+                (icono_x - icono_size // 2, icono_y + icono_size // 2), # Abajo izquierda
+                (icono_x + icono_size // 2, icono_y + icono_size // 2) # Abajo derecha
             ]
             pygame.draw.polygon(surf, (255, 255, 0), triangulo_puntos)
             pygame.draw.polygon(surf, (255, 0, 0), triangulo_puntos, 3)
-            
+          
             # Signo de exclamación dentro del triángulo
             exclamacion = self.fonts["title"].render("!", True, (255, 0, 0))
-            surf.blit(exclamacion, (icono_x - exclamacion.get_width() // 2, 
+            surf.blit(exclamacion, (icono_x - exclamacion.get_width() // 2,
                                    icono_y - exclamacion.get_height() // 2))
-            
+          
             # Título principal
             titulo_y = icono_y + 60
             titulo1 = self.fonts["title"].render("¡SISTEMA BLOQUEADO!", True, (255, 0, 0))
             surf.blit(titulo1, (panel_rect.centerx - titulo1.get_width() // 2, titulo_y))
-            
+          
             titulo2 = self.fonts["normal"].render("Tus archivos han sido cifrados", True, (255, 255, 255))
             surf.blit(titulo2, (panel_rect.centerx - titulo2.get_width() // 2, titulo_y + 40))
-            
+          
             # Mensaje de rescate
             mensaje_y = titulo_y + 90
             mensajes = [
@@ -5916,7 +5979,7 @@ class Level2Screen(Screen):
                 "",
                 "TIEMPO RESTANTE: 23:47:15"
             ]
-            
+          
             for i, linea in enumerate(mensajes):
                 if linea == "1A2b3C4d5E6f7G8h9I0j...":
                     # Dirección de Bitcoin en color diferente
@@ -5929,76 +5992,76 @@ class Level2Screen(Screen):
                         texto = self.fonts["normal"].render(linea, True, (255, 150, 150))
                 else:
                     texto = self.fonts["small"].render(linea, True, (200, 200, 200))
-                
+              
                 surf.blit(texto, (panel_rect.centerx - texto.get_width() // 2, mensaje_y + i * 25))
-            
+          
             # Botón falso de "Pagar Rescate"
             boton_pagar_w = 200
             boton_pagar_h = 40
             boton_pagar_x = panel_rect.centerx - boton_pagar_w // 2
             boton_pagar_y = panel_rect.bottom - 60
             boton_pagar_rect = pygame.Rect(boton_pagar_x, boton_pagar_y, boton_pagar_w, boton_pagar_h)
-            
+          
             pygame.draw.rect(surf, (100, 0, 0), boton_pagar_rect, border_radius=8)
             pygame.draw.rect(surf, (255, 0, 0), boton_pagar_rect, 3, border_radius=8)
-            
+          
             boton_texto = self.fonts["normal"].render("PAGAR RESCATE", True, (255, 255, 255))
             surf.blit(boton_texto, (boton_pagar_rect.centerx - boton_texto.get_width() // 2,
                                    boton_pagar_rect.centery - boton_texto.get_height() // 2))
-            
+          
             # Botón X para minimizar temporalmente (esquina superior derecha del panel)
             boton_x_size = 30
             boton_x_rect = pygame.Rect(panel_rect.right - boton_x_size - 10, panel_rect.top + 10, boton_x_size, boton_x_size)
-            
+          
             # Detectar hover
             mx, my = pygame.mouse.get_pos()
             color_x = (255, 100, 100) if boton_x_rect.collidepoint(mx, my) else (200, 0, 0)
-            
+          
             pygame.draw.rect(surf, color_x, boton_x_rect, border_radius=5)
             pygame.draw.rect(surf, (255, 255, 255), boton_x_rect, 2, border_radius=5)
-            
+          
             # Dibujar X
             x_text = self.fonts["title"].render("X", True, (255, 255, 255))
             surf.blit(x_text, (boton_x_rect.centerx - x_text.get_width() // 2,
                               boton_x_rect.centery - x_text.get_height() // 2))
-            
+          
             # Hint pequeño debajo del botón X
             hint_text = self.fonts["small"].render("Minimizar (7 seg)", True, (180, 180, 180))
             surf.blit(hint_text, (boton_x_rect.centerx - hint_text.get_width() // 2,
                                  boton_x_rect.bottom + 5))
-        
+      
         # SÍNTOMA: Teclas Fantasma (Spyware)
         if self.gestor_virus.sintomas_activos["teclas_fantasma"]:
             # 1. Caracteres flotantes aleatorios dispersos por la pantalla
             for char, x, y, color in self.teclas_fantasma_caracteres:
                 # Renderizar con semi-transparencia
                 char_surf = self.fonts["normal"].render(char, True, color)
-                char_surf.set_alpha(180)  # Semi-transparente para no obstruir demasiado
+                char_surf.set_alpha(180) # Semi-transparente para no obstruir demasiado
                 surf.blit(char_surf, (x, y))
-            
+          
             # 2. Cuadro de keylogger en esquina superior derecha
             keylog_w = 280
             keylog_h = 50
             keylog_x = SCREEN_W - keylog_w - 20
-            keylog_y = 60  # Debajo del indicador de síntomas
+            keylog_y = 60 # Debajo del indicador de síntomas
             keylog_rect = pygame.Rect(keylog_x, keylog_y, keylog_w, keylog_h)
-            
+          
             # Fondo semi-transparente rojo oscuro
             keylog_bg = pygame.Surface((keylog_w, keylog_h), pygame.SRCALPHA)
             keylog_bg.fill((50, 0, 0, 200))
             surf.blit(keylog_bg, (keylog_x, keylog_y))
-            
+          
             # Borde rojo parpadeante
             if pygame.time.get_ticks() % 800 < 400:
                 border_color = (255, 0, 0)
             else:
                 border_color = (150, 0, 0)
             pygame.draw.rect(surf, border_color, keylog_rect, 2, border_radius=5)
-            
+          
             # Título del keylogger
             titulo_keylog = self.fonts["small"].render("KEYLOG ACTIVE:", True, (255, 50, 50))
             surf.blit(titulo_keylog, (keylog_x + 8, keylog_y + 5))
-            
+          
             # Texto capturado (con efecto de escritura)
             texto_capturado = self.fonts["small"].render(self.keylog_texto, True, (0, 255, 100))
             # Truncar si es muy largo
@@ -6008,13 +6071,17 @@ class Level2Screen(Screen):
                 while self.fonts["small"].render(texto_display, True, (0, 255, 100)).get_width() > keylog_w - 16:
                     texto_display = texto_display[1:]
                 texto_capturado = self.fonts["small"].render(texto_display, True, (0, 255, 100))
-            
+          
             surf.blit(texto_capturado, (keylog_x + 8, keylog_y + 25))
-        
+      
+        # Aplicar efecto de glitch si está activo
+        if self.glitch_active:
+            self.apply_glitch(surf)
+      
         # SISTEMA EDUCATIVO: Renderizar overlay educativo al final (sobre todo)
         self.overlay_educativo.render(surf)
-
             # --------- Clase principal del juego ----------
+
 class Game:
     def __init__(self):
         pygame.init()
