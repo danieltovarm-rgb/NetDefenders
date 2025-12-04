@@ -519,6 +519,8 @@ class PreQuizContextScreen(Screen):
                 self.game.change_screen(from_screen)
             elif self.btn_omitir.collidepoint(mx, my):
                 # Omitir quiz e ir directo a selección de nivel
+                # Marcar que el quiz inicial ha sido omitido (completado)
+                self.game.quiz_inicial_completado = True
                 self.game.change_screen(LevelSelectScreen(self.game))
 
     def update(self, dt):
@@ -639,6 +641,8 @@ class QuizScreen(Screen):
         
         # Transicionar
         if self.mode == 'pre':
+            # Marcar que el quiz inicial ha sido completado
+            self.game.quiz_inicial_completado = True
             self.game.change_screen(self.next_screen or LevelSelectScreen(self.game))
         else:
             # post/final: mostrar resumen
@@ -1139,8 +1143,12 @@ class MenuScreen(Screen):
                 if rect.collidepoint(mx, my):
                     anim["scale"] = anim.get("press_scale", 0.95)  # click tap animation
                     if opt == "JUGAR":
-                        # Ir al contexto del quiz inicial
-                        self.game.change_screen(PreQuizContextScreen(self.game))
+                        # Ir al quiz inicial solo si no se ha completado antes
+                        if not self.game.quiz_inicial_completado:
+                            self.game.change_screen(PreQuizContextScreen(self.game))
+                        else:
+                            # Si ya se completó, ir directo a la selección de niveles
+                            self.game.change_screen(LevelSelectScreen(self.game))
                     elif opt == "SALIR":
                         pygame.quit();
                         sys.exit()
@@ -6101,8 +6109,10 @@ class Game:
         # Estado de desbloqueo de niveles (memoria de sesión)
         self.unlocked_levels = {
             "Nivel 1": True,
-            "Nivel 2": True,
+            "Nivel 2": False,
         }
+        # NUEVO: Bandera para controlar si el quiz inicial ya fue completado
+        self.quiz_inicial_completado = False
         # Ruta a la fuente TTF del proyecto (archivo 'texto.ttf' en la raíz del proyecto)
         self.font_path = os.path.join(script_dir, "texto.ttf")
         try:
