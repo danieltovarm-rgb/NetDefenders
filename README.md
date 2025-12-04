@@ -209,11 +209,58 @@ NetDefenders/
 
 ## 🏆 Sistema de Puntuación
 
-- **Acciones Correctas**: +100 a +500 puntos
-- **Errores**: -50 a -200 puntos
-- **Respuestas Correctas en Quizzes**: Bonificación extra
-- **Eficiencia en Recursos**: Bonus por optimización
-- **Tiempo de Reacción**: Multiplicadores por rapidez
+### Puntuación Base
+
+**Nivel 1 - Detector de Phishing:**
+- **Bloquear ataque de phishing correctamente**: +200 puntos
+- **Usar herramienta apropiada**: +150 puntos
+- **Identificar puerta comprometida**: +100 puntos
+- **Dejar pasar un ataque**: -150 puntos
+- **Usar herramienta incorrecta**: -100 puntos
+- **Eliminar amenaza legítima**: -200 puntos
+
+**Nivel 2 - Cazador de Malware:**
+- **Escanear archivo infectado**: +100 puntos
+- **Limpiar malware exitosamente**: +300 puntos
+- **Enviar a cuarentena correctamente**: +250 puntos
+- **Identificar tipo de malware**: +150 puntos
+- **Eliminar archivo legítimo**: -200 puntos
+- **Ignorar archivo infectado**: -150 puntos
+- **Acción incorrecta sobre malware**: -100 puntos
+
+### Bonificaciones
+
+- **Respuestas correctas en Quizzes**: +200 a +500 puntos (según dificultad)
+- **Racha de aciertos**: 
+  - 3 acciones correctas consecutivas: +100 puntos bonus
+  - 5 acciones correctas consecutivas: +250 puntos bonus
+  - 10 acciones correctas consecutivas: +500 puntos bonus
+- **Eficiencia en Recursos**: 
+  - Completar nivel usando menos del 50% de recursos: +300 puntos
+  - Completar sin quedarse sin recursos: +150 puntos
+- **Velocidad de Respuesta**:
+  - Respuesta inmediata (< 2 segundos): Multiplicador x1.5
+  - Respuesta rápida (< 5 segundos): Multiplicador x1.2
+- **Combo de Herramientas**: Usar la combinación perfecta de herramientas: +200 puntos
+
+### Criterios de Victoria/Derrota
+
+**Victoria:**
+- **Nivel 1**: Bloquear al menos 70% de ataques de phishing y mantener puntuación > 1000
+- **Nivel 2**: Limpiar al menos 80% de malware sin eliminar archivos legítimos, puntuación > 1500
+
+**Derrota:**
+- Puntuación cae por debajo de 0
+- Recursos (CPU/RAM/Ancho de Banda) se agotan completamente
+- Más del 50% de amenazas no neutralizadas
+
+### Sistema de Ranking
+
+- **🥇 Experto en Seguridad**: > 5000 puntos
+- **🥈 Defensor Avanzado**: 3000 - 4999 puntos
+- **🥉 Guardián Digital**: 1500 - 2999 puntos
+- **⭐ Aprendiz**: 500 - 1499 puntos
+- **📚 Novato**: < 500 puntos
 
 ---
 
@@ -250,7 +297,13 @@ Este proyecto es de naturaleza educativa y está desarrollado con fines académi
 
 ## 👨‍💻 Autores
 
-- **Equipo NetDefenders** - Proyecto de Programación Orientada a Objetos
+**Equipo NetDefenders** - Proyecto de Programación Orientada a Objetos
+
+- **Tovar Moscol, Daniel Aarón**
+- **Hernández Marcelo, Dulce Ariana**
+- **Palma Tito, Roberto Enrique**
+- **Becerra Chauca, Isaac Amir**
+- **Uchasara Quispe, Miguel**
 
 ---
 
@@ -271,3 +324,4 @@ Para preguntas, sugerencias o reportar problemas:
 ---
 
 **¡Defiende la red, aprende ciberseguridad y conviértete en un NetDefender!** 🛡️🔒
+
