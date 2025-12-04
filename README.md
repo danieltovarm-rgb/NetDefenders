@@ -299,7 +299,7 @@ Este proyecto es de naturaleza educativa y está desarrollado con fines académi
 
 **Equipo NetDefenders** - Proyecto de Programación Orientada a Objetos
 
-- **Tovar Moscol, Daniel Aarón**
+- **Tovar Moscol, Daniel Aarom**
 - **Hernández Marcelo, Dulce Ariana**
 - **Palma Tito, Roberto Enrique**
 - **Becerra Chauca, Isaac Amir**
