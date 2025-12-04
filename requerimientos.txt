@@ -1,1 +1,18 @@
-Aquí irán los requerimientos
+# Dependencias principales de NetDefenders
+# Instalar con: pip install -r requerimientos.txt
+
+# Framework de juego
+pygame>=2.5.0,<3.0.0
+
+# Procesamiento de video y multimedia
+moviepy>=1.0.3,<2.0.0
+imageio>=2.25.0
+imageio-ffmpeg>=0.4.8
+Pillow>=10.0.0
+
+# Análisis numérico y datos
+numpy>=1.24.0,<2.0.0
+pandas>=2.0.0,<3.0.0
+openpyxl>=3.1.0
+
+# Nota: Python 3.8 o superior es requerido
