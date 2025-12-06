@@ -505,23 +505,17 @@ class PreQuizContextScreen(Screen):
         self.bg_color = (10, 10, 30)
         self.text_color = (0, 255, 200)
         
-        # Botones
-        btn_w, btn_h = 200, 50
-        self.btn_comenzar = pygame.Rect(SCREEN_W//2 - btn_w - 20, SCREEN_H - 120, btn_w, btn_h)
-        self.btn_omitir = pygame.Rect(SCREEN_W//2 + 20, SCREEN_H - 120, btn_w, btn_h)
+        # Botón centrado (sin opción de omitir)
+        btn_w, btn_h = 250, 60
+        self.btn_comenzar = pygame.Rect(SCREEN_W//2 - btn_w//2, SCREEN_H - 120, btn_w, btn_h)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             if self.btn_comenzar.collidepoint(mx, my):
-                # Ir al quiz pre
+                # Ir al quiz pre (obligatorio)
                 from_screen = QuizScreen(self.game, mode='pre', next_screen=LevelSelectScreen(self.game))
                 self.game.change_screen(from_screen)
-            elif self.btn_omitir.collidepoint(mx, my):
-                # Omitir quiz e ir directo a selección de nivel
-                # Marcar que el quiz inicial ha sido omitido (completado)
-                self.game.quiz_inicial_completado = True
-                self.game.change_screen(LevelSelectScreen(self.game))
 
     def update(self, dt):
         pass
@@ -532,38 +526,32 @@ class PreQuizContextScreen(Screen):
         surf.blit(title, (SCREEN_W//2 - title.get_width()//2, 100))
         
         lines = [
-            "Antes de comenzar, responde 12 preguntas",
+            "Antes de comenzar, debes responder 12 preguntas",
             "sobre phishing y malware.",
             "",
-            "Al finalizar el juego, repetirás el test",
-            "para medir tu mejora.",
+            "Esta evaluación es OBLIGATORIA y nos permitirá",
+            "medir tu aprendizaje al final del juego.",
+            "",
+            "Al completar los niveles, repetirás el mismo test",
+            "para calcular tu porcentaje de mejora.",
         ]
-        y_offset = 220
+        y_offset = 200
         for line in lines:
             txt = self.body_font.render(line, True, (200, 200, 200))
             surf.blit(txt, (SCREEN_W//2 - txt.get_width()//2, y_offset))
-            y_offset += 40
+            y_offset += 35
         
-        # Dibujar botones
+        # Dibujar botón centrado
         mx, my = pygame.mouse.get_pos()
         
-        # Botón Comenzar Quiz
+        # Botón Comenzar Quiz (único botón)
         hover_comenzar = self.btn_comenzar.collidepoint(mx, my)
         color_comenzar = (0, 180, 120) if hover_comenzar else (0, 140, 90)
         pygame.draw.rect(surf, color_comenzar, self.btn_comenzar, border_radius=8)
-        pygame.draw.rect(surf, (0, 255, 200), self.btn_comenzar, 2, border_radius=8)
-        txt_comenzar = self.btn_font.render("Comenzar Quiz", True, (255, 255, 255))
+        pygame.draw.rect(surf, (0, 255, 200), self.btn_comenzar, 3, border_radius=8)
+        txt_comenzar = self.btn_font.render("Comenzar Evaluación", True, (255, 255, 255))
         surf.blit(txt_comenzar, (self.btn_comenzar.centerx - txt_comenzar.get_width()//2, 
                                   self.btn_comenzar.centery - txt_comenzar.get_height()//2))
-        
-        # Botón Omitir Quiz
-        hover_omitir = self.btn_omitir.collidepoint(mx, my)
-        color_omitir = (120, 80, 80) if hover_omitir else (80, 60, 60)
-        pygame.draw.rect(surf, color_omitir, self.btn_omitir, border_radius=8)
-        pygame.draw.rect(surf, (180, 100, 100), self.btn_omitir, 2, border_radius=8)
-        txt_omitir = self.btn_font.render("Omitir Quiz", True, (200, 200, 200))
-        surf.blit(txt_omitir, (self.btn_omitir.centerx - txt_omitir.get_width()//2, 
-                               self.btn_omitir.centery - txt_omitir.get_height()//2))
 
 class QuizScreen(Screen):
     """Pantalla para pre/post quiz. Usa QUIZ_QA_LEVEL12.
