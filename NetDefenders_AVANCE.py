@@ -588,6 +588,10 @@ class QuizScreen(Screen):
             self.title_font = pygame.font.SysFont("Consolas", 32)
             self.q_font = pygame.font.SysFont("Consolas", 22)
             self.opt_font = pygame.font.SysFont("Consolas", 18)
+        
+        # NUEVO: Guardar el banco de preguntas en player_stats para referencia
+        if mode == 'pre':
+            self.game.player_stats.set_quiz_questions(self.questions)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -611,6 +615,17 @@ class QuizScreen(Screen):
         q = self.questions[self.current_idx]
         correct = (idx == q["correcta"])
         self.answers.append(correct)
+        
+        # NUEVO: Registrar respuesta individual con detalles completos
+        self.game.player_stats.record_quiz_answer(
+            mode=self.mode,
+            question_index=self.current_idx,
+            question_text=q["pregunta"],
+            selected_answer=idx,
+            correct_answer=q["correcta"],
+            category=q["categoria"]
+        )
+        
         self.show_feedback = True
         self.feedback_timer = 0
 
@@ -1407,10 +1422,10 @@ class Level1Screen(BaseLevelScreen):
             "Tutor: Tu enemigo es el hacker que cuenta con 100 puntos de vida. Ganas si reduces su vida a 0 o tienes más puntos que él al final.",
             "Tutor: Recibirás una bandeja con correos legítimos y phishing. Haz clic en uno para abrirlo y analizarlo.",
             "Tutor: Debes revisar siempre tres aspectos clave:\n- El DOMINIO del remitente\n- El TEXTO del mensaje\n- El LOGO de la empresa",
-            "Tutor: Tienes tres acciones disponibles:\nRESPONDER: Para correos legítimos de compañeros o externos de confianza.\nELIMINAR: Causa daño menor al hacker si es phishing.\nREPORTAR: Causa el máximo daño (25 puntos) si detectas phishing correctamente.",
+            "Tutor: Tienes dos acciones disponibles:\nLEGÍTIMO: Marca correos seguros de compañeros o externos de confianza.\nPHISHING: Reporta amenazas detectadas (25 puntos de daño al hacker).",
             "Tutor: También cuentas con BUSCAR EN WEB.\nHaz clic en ese botón dentro del correo y selecciona qué investigar: logo, dominio o texto.\nObtendrás información que te ayudará a decidir si es legítimo o malicioso.",
-            "Tutor: Ten cuidado con los errores:\nSi RESPONDES a phishing perderás entre 15 y 30 puntos.\nSi REPORTAS un correo legítimo perderás 20 puntos.\nSi ELIMINAS uno legítimo perderás 10 puntos.",
-            "Tutor: Cuando REPORTES o ELIMINES, debes marcar las razones por las que sospechas:\n- Logo\n- Dominio\n- Texto",
+            "Tutor: Ten cuidado con los errores:\nSi marcas LEGÍTIMO un phishing perderás entre 15 y 30 puntos.\nSi marcas PHISHING un correo legítimo perderás 20 puntos.",
+            "Tutor: Cuando marques PHISHING, debes indicar las razones por las que sospechas:\n- Logo\n- Dominio\n- Texto",
             "Tutor: Sistema de puntuación por razones:\nPor cada razón CORRECTA causarás 2 puntos extra de daño al hacker.\nSi marcas razones INCORRECTAS, perderás 2 puntos de tu integridad.\nY si pasas por alto una razón, perderás 1 punto de tu",
             "Tutor: Recuerda, solo apareceré 3 veces durante la simulación para ayudarte si cometes errores.",
             "Tutor: ¡Iniciando simulación... ya!"
@@ -1456,10 +1471,10 @@ class Level1Screen(BaseLevelScreen):
         self.burla_hacker = ""
         self.burla_hacker_timer = 0
         self.lista_burlas = [
-            "¡Clic! Gracias por las llaves del reino. 🔑",
-            "Jaja, ¿paranoico? Estás bloqueando a tus compañeros.",
-            "Demasiado fácil. Tu 'firewall' mental tiene agujeros.",
-            "¡Ups! ¿Eso dolió? 💥",
+            "Clic! Gracias por las llaves del reino.",
+            "Jaja, paranoico? Estas bloqueando a tus companeros.",
+            "Demasiado facil. Tu 'firewall' mental tiene agujeros.",
+            "Ups! Eso dolio?",
             "Sigue intentando, 'genio'."
         ]
 
@@ -1497,6 +1512,13 @@ class Level1Screen(BaseLevelScreen):
         self.feedback_lines = []  # Lista de líneas de feedback
         self.feedback_visible = False  # Estado para mostrar el cuadro
         
+        # NUEVO: Variables temporales para el tutor
+        self.resultado_temp = None
+        self.hubo_error_accion_temp = False
+        self.correo_temp = None
+        self.accion_temp = None
+        self.razones_seleccionadas_temp = None
+        
         # NUEVO: Animaciones y efectos visuales
         self.vida_anterior_jugador = self.protagonista.vida
         self.vida_anterior_hacker = self.hacker_logic.vida
@@ -1507,6 +1529,12 @@ class Level1Screen(BaseLevelScreen):
         self.should_glitch = False
         # Transición de EmailPanel
         self.email_panel_transition = 0.0  # 0.0 = cerrado, 1.0 = completamente abierto
+        
+        # Sistema de scroll para mensaje del tutor
+        self.tutor_scroll_offset = 0
+        self.tutor_max_scroll = 0
+        self.tutor_scrollbar_dragging = False
+        self.tutor_scrollbar_rect = pygame.Rect(0, 0, 10, 0)  # Se actualizará en render
 
     def _player_won(self):
         # Ganó si el hacker llegó a 0 o si al finalizar tiene más vida
@@ -1595,27 +1623,26 @@ class Level1Screen(BaseLevelScreen):
         ]
 
     def procesar_accion_correo(self, accion, correo):
+        # accion puede ser "legitimo" o "phishing"
         if correo.es_legitimo:
             return self._procesar_correo_legitimo(accion, correo)
         else:
             return self._procesar_correo_malicioso(accion, correo)
 
     def _procesar_correo_legitimo(self, accion, correo):
-        if accion == "responder":
+        if accion == "legitimo":
             return {"daño_jugador": 0, "daño_hacker": 0, "correcto": True}
-        elif accion == "eliminar":
-            return {"daño_jugador": 15, "daño_hacker": 0, "correcto": False}
-        elif accion == "reportar":
-            return {"daño_jugador": 25, "daño_hacker": 0, "correcto": False}
+        elif accion == "phishing":
+            return {"daño_jugador": 20, "daño_hacker": 0, "correcto": False}
 
     def _procesar_correo_malicioso(self, accion, correo):
-        if accion == "reportar":
-            return {"daño_jugador": 0, "daño_hacker": 20, "correcto": True}
-        elif accion == "eliminar":
-            return {"daño_jugador": 0, "daño_hacker": 8, "correcto": True}
-        elif accion == "responder":
+        if accion == "phishing":
+            daño_base = 25
+            return {"daño_jugador": 0, "daño_hacker": daño_base, "correcto": True}
+        elif accion == "legitimo":
             daño_extra = self._calcular_daño_por_tipo(correo.tipo_malicioso)
-            return {"daño_jugador": 20 + daño_extra, "daño_hacker": 0, "correcto": False}
+            daño_total = 15 + daño_extra
+            return {"daño_jugador": daño_total, "daño_hacker": 0, "correcto": False}
 
     def _calcular_daño_por_tipo(self, tipo_malicioso):
         daños = {
@@ -1664,7 +1691,7 @@ class Level1Screen(BaseLevelScreen):
         # Preparar detalles de errores para stats
         mistake_details = {}
         
-        # Procesar razones si es eliminar o reportar
+        # Procesar razones si es phishing
         daño_incorrectas = 0
         daño_faltantes = 0
         bonus_hacker = 0
@@ -1712,15 +1739,30 @@ class Level1Screen(BaseLevelScreen):
 
         # NUEVO: Preparar feedback SEPARADO por tipos de razones
         self.preparar_feedback_lines(resultado, daño_incorrectas, daño_faltantes, bonus_hacker)
-        self.feedback_visible = True
-        self.estado = "mostrando_feedback"
+        
+        # Guardar contexto para el tutor
+        self.resultado_temp = resultado
         self.hubo_error_accion_temp = hubo_error_accion
         self.correo_temp = correo
         self.accion_temp = accion
         self.razones_seleccionadas_temp = razones_seleccionadas
-
+        
+        # Mostrar tutor inmediatamente (con correo abierto)
+        self.tutor_visible = True
+        self.tutor_mensaje = self.obtener_mensaje_tutor_completo(correo, accion, razones_seleccionadas, resultado)
+        self.tutor_timer = 0
+        self.contador_tutor += 1
+        
+        # Resetear scroll del mensaje del tutor
+        self.tutor_scroll_offset = 0
+        self.tutor_scrollbar_dragging = False
+        
+        # Cambiar estado a "mostrando_tutor" (el correo sigue abierto)
+        self.estado = "mostrando_tutor"
+        
+        # Marcar correo como procesado pero mantenerlo visible
         correo.procesado = True
-        correo.visible = False
+        # NO cerrar el correo todavía: correo.visible sigue True
         
     def preparar_feedback_lines(self, resultado, daño_incorrectas, daño_faltantes, bonus_hacker):
         self.feedback_lines = []
@@ -1758,20 +1800,236 @@ class Level1Screen(BaseLevelScreen):
             
         import random
         # Elegir burla específica si es posible
-        if resultado_accion.get("accion") == "reportar" and self.correo_abierto.es_legitimo:
-             self.burla_hacker = "Jaja, ¿paranoico? Estás bloqueando a tus compañeros."
-        elif resultado_accion.get("accion") == "responder" and not self.correo_abierto.es_legitimo:
-             self.burla_hacker = "¡Clic! Gracias por las llaves del reino. 🔑"
+        if resultado_accion.get("accion") == "phishing" and self.correo_abierto.es_legitimo:
+             self.burla_hacker = "Jaja, paranoico? Estas bloqueando a tus companeros."
+        elif resultado_accion.get("accion") == "legitimo" and not self.correo_abierto.es_legitimo:
+             self.burla_hacker = "Clic! Gracias por las llaves del reino."
         else:
              self.burla_hacker = random.choice(self.lista_burlas)
         
         self.burla_hacker_timer = 3000 # Mostrar burla por 3 segundos
 
+    def obtener_mensaje_tutor_completo(self, correo, accion, razones_seleccionadas, resultado):
+        """Genera mensaje personalizado del tutor específico para cada correo."""
+        mensaje = []
+        
+        # Identificar el correo por su asunto para dar feedback personalizado
+        asunto_lower = correo.asunto.lower()
+        
+        # ===== CORREO 1: Microsoft - Phishing de contraseñas =====
+        if "contraseña ha caducado" in asunto_lower or "microsoft" in correo.remitente.lower():
+            if accion == "phishing" and resultado["correcto"]:
+                mensaje.append("[ALERTA: CORREO PHISHING - MICROSOFT FALSO]")
+                mensaje.append("\n>> EXCELENTE DETECCION!")
+                mensaje.append("\nEste es un ataque clasico de robo de credenciales.")
+                mensaje.append("\nPor qué es phishing:")
+                mensaje.append("- Dominio: 'microsoft-support@outlook.com' NO es de Microsoft")
+                mensaje.append("  (Microsoft usa @microsoft.com)")
+                mensaje.append("- Texto: Urgencia artificial ('2 horas'), amenazas de suspension")
+                mensaje.append("- URL sospechosa: 'portal-checker.info' no es de Microsoft")
+                mensaje.append("\nREGLA DE ORO: Microsoft NUNCA pide contraseñas por correo.")
+                # Análisis de razones
+                if razones_seleccionadas:
+                    razones_correctas_set = set(correo.razones_correctas)
+                    razones_seleccionadas_set = set(razones_seleccionadas)
+                    incorrectas = razones_seleccionadas_set - razones_correctas_set
+                    faltantes = razones_correctas_set - razones_seleccionadas_set
+                    if not incorrectas and not faltantes:
+                        mensaje.append("\n>> ANALISIS PERFECTO! (Bonus +4 puntos al hacker)")
+                    else:
+                        if incorrectas:
+                            mensaje.append(f"\n[!] Razones incorrectas: {', '.join(incorrectas)} (-2 puntos)")
+                        if faltantes:
+                            mensaje.append(f"\n[!] Te falto notar: {', '.join(faltantes)} (-1 punto)")
+            else:
+                mensaje.append("[ALERTA: CORREO PHISHING - MICROSOFT FALSO]")
+                mensaje.append("\n>> ERROR CRITICO! Has dejado pasar un ataque de credenciales.")
+                mensaje.append("\nPor que esto era phishing:")
+                mensaje.append("- El dominio 'outlook.com' NO es el dominio oficial de Microsoft corporativo")
+                mensaje.append("- Microsoft JAMAS caduca contraseñas sin que tu lo solicites")
+                mensaje.append("- La urgencia de '2 horas' es una tactica de presion clasica")
+                mensaje.append("- La URL 'portal-checker.info' es completamente fraudulenta")
+                mensaje.append("\nCONSECUENCIA: El atacante ahora tiene acceso a credenciales.")
+                mensaje.append("Perdiste entre 15-30 puntos de integridad de red.")
+        
+        # ===== CORREO 2: RH Synergy Corp - Legítimo interno =====
+        elif "vacaciones" in asunto_lower or "rh@synergy-corp.com" in correo.remitente:
+            if accion == "legitimo" and resultado["correcto"]:
+                mensaje.append("[CORREO LEGITIMO - RECURSOS HUMANOS]")
+                mensaje.append("\n>> CORRECTO! Este correo es seguro.")
+                mensaje.append("\nPor que era legitimo:")
+                mensaje.append("- Dominio: 'rh@synergy-corp.com' es el dominio interno oficial")
+                mensaje.append("- Tono: Profesional, amigable, sin urgencias artificiales")
+                mensaje.append("- Contenido: Informativo, sin solicitud de datos sensibles")
+                mensaje.append("- No hay enlaces externos sospechosos")
+                mensaje.append("\nEste tipo de correos son comunicaciones normales del equipo.")
+                mensaje.append("Reportarlos crearia 'falsos positivos' y perderiamos tiempo valioso.")
+            else:
+                mensaje.append("[CORREO LEGITIMO - RECURSOS HUMANOS]")
+                mensaje.append("\n>> ERROR! Has marcado como phishing un correo interno legitimo.")
+                mensaje.append("\nPor que esto era legitimo:")
+                mensaje.append("- Dominio oficial de la empresa: @synergy-corp.com")
+                mensaje.append("- Contenido apropiado de RH sin solicitudes sospechosas")
+                mensaje.append("- Tono profesional sin presion ni urgencias artificiales")
+                mensaje.append("\nCONSECUENCIA: Crear falsos positivos sobrecarga al equipo de")
+                mensaje.append("seguridad y genera desconfianza en comunicaciones internas validas.")
+                mensaje.append("Perdiste 20 puntos de integridad.")
+        
+        # ===== CORREO 3: Lotería - Estafa financiera clásica =====
+        elif "ganado" in asunto_lower or "lotto" in correo.remitente.lower():
+            if accion == "phishing" and resultado["correcto"]:
+                mensaje.append("[ALERTA: ESTAFA FINANCIERA - LOTERIA FALSA]")
+                mensaje.append("\n>> BIEN DETECTADO! Esta es una estafa clasica.")
+                mensaje.append("\nPor que es phishing:")
+                mensaje.append("- Logo: Logotipo poco profesional y generico")
+                mensaje.append("- Dominio: 'ganadores-lotto.net' no es una loteria real")
+                mensaje.append("- Texto: Promesa de dinero facil + solicitud de 'tasa' de $20")
+                mensaje.append("- Urgencia: 'Caduca en 24 horas'")
+                mensaje.append("\nESQUEMA: Estafa 'advance-fee' (pago por adelantado).")
+                mensaje.append("Te piden dinero para 'procesar' un premio que no existe.")
+                mensaje.append("\nREGLA: Si no jugaste, no puedes ganar. Nadie regala dinero asi.")
+                if razones_seleccionadas:
+                    razones_correctas_set = set(correo.razones_correctas)
+                    razones_seleccionadas_set = set(razones_seleccionadas)
+                    incorrectas = razones_seleccionadas_set - razones_correctas_set
+                    faltantes = razones_correctas_set - razones_seleccionadas_set
+                    if not incorrectas and not faltantes:
+                        mensaje.append("\n>> ANALISIS PERFECTO! Identificaste las 3 fallas.")
+                    else:
+                        if incorrectas:
+                            mensaje.append(f"\n[!] Razones incorrectas: {', '.join(incorrectas)}")
+                        if faltantes:
+                            mensaje.append(f"\n[!] Te falto notar: {', '.join(faltantes)}")
+            else:
+                mensaje.append("[ALERTA: ESTAFA FINANCIERA - LOTERIA FALSA]")
+                mensaje.append("\n>> ERROR! Caiste en una estafa de 'dinero facil'.")
+                mensaje.append("\nEste correo tenia TODAS las señales de phishing:")
+                mensaje.append("- Logo generico y poco profesional")
+                mensaje.append("- Dominio desconocido 'ganadores-lotto.net'")
+                mensaje.append("- Promesa de $500,000 de la nada")
+                mensaje.append("- Solicitud de pago de $20 para 'procesar'")
+                mensaje.append("\nREALIDAD: No ganaste nada. Es una estafa para robarte dinero.")
+                mensaje.append("Si hubieras pagado, perderian tu informacion bancaria.")
+                mensaje.append("Perdiste 20-25 puntos de integridad.")
+        
+        # ===== CORREO 4: LinkedIn - Legítimo externo =====
+        elif "linkedin" in correo.remitente.lower() or "invitacion" in asunto_lower:
+            if accion == "legitimo" and resultado["correcto"]:
+                mensaje.append("[CORREO LEGITIMO - LINKEDIN]")
+                mensaje.append("\n>> CORRECTO! Este es un correo autentico de LinkedIn.")
+                mensaje.append("\nPor que era legitimo:")
+                mensaje.append("- Dominio: '@linkedin.com' es el dominio oficial verificado")
+                mensaje.append("- Contenido: Notificacion de invitacion profesional estandar")
+                mensaje.append("- Tono: Profesional y sin solicitudes de datos sensibles")
+                mensaje.append("- Instruccion: Te pide iniciar sesion 'de forma segura' en el sitio oficial")
+                mensaje.append("\nEste tipo de notificaciones son normales de plataformas profesionales.")
+                mensaje.append("Siempre verifica el dominio del remitente para estar seguro.")
+            else:
+                mensaje.append("[CORREO LEGITIMO - LINKEDIN]")
+                mensaje.append("\n>> ERROR! Marcaste como phishing un correo legitimo de LinkedIn.")
+                mensaje.append("\nPor que esto era legitimo:")
+                mensaje.append("- Dominio oficial: '@linkedin.com' (verificalo siempre)")
+                mensaje.append("- Contenido estandar de notificacion de red profesional")
+                mensaje.append("- No solicita datos sensibles, solo te informa de una invitacion")
+                mensaje.append("\nCONSECUENCIA: Bloquear correos legitimos de servicios externos")
+                mensaje.append("afecta la comunicacion profesional y genera falsos positivos.")
+                mensaje.append("Perdiste 20 puntos de integridad.")
+        
+        # ===== CORREO 5: IT Synergy Corp - Phishing interno sofisticado =====
+        elif "migracion" in asunto_lower or "it-soporte@it.synergy-corp.com" in correo.remitente:
+            if accion == "phishing" and resultado["correcto"]:
+                mensaje.append("[ALERTA: PHISHING INTERNO SOFISTICADO]")
+                mensaje.append("\n>> EXCELENTE ANALISIS! Este era el mas dificil.")
+                mensaje.append("\nPor que es phishing (aunque parezca interno):")
+                mensaje.append("- Dominio SOSPECHOSO: 'it-soporte@it.synergy-corp.com'")
+                mensaje.append("  (Subdominio 'it.' no es el dominio oficial interno)")
+                mensaje.append("- Texto: Urgencia extrema (2:00 AM, riesgo de corrupcion)")
+                mensaje.append("- Solicita credenciales directamente (NUNCA legitimo)")
+                mensaje.append("- Amenaza con perdida de datos para presionar")
+                mensaje.append("\nREALIDAD: El departamento de IT NUNCA pide contraseñas por correo.")
+                mensaje.append("Las migraciones se anuncian con semanas de anticipacion.")
+                mensaje.append("\nEste es un ataque 'spear phishing' que imita comunicaciones internas.")
+                if razones_seleccionadas:
+                    if "Texto" in razones_seleccionadas:
+                        mensaje.append("\n>> Identificaste la urgencia artificial. Muy bien!")
+                    else:
+                        mensaje.append("\n[!] La clave era detectar la urgencia artificial en el texto.")
+            else:
+                mensaje.append("[ALERTA: PHISHING INTERNO SOFISTICADO]")
+                mensaje.append("\n>> ERROR MUY GRAVE! Dejaste pasar un ataque interno.")
+                mensaje.append("\nPor que esto era phishing:")
+                mensaje.append("- Aunque parece de IT, el subdominio 'it.synergy-corp.com' es falso")
+                mensaje.append("- IT corporativo NUNCA pide contraseñas por correo")
+                mensaje.append("- La urgencia ('2:00 AM', 'se corrompera') es tactica de presion")
+                mensaje.append("- Migraciones reales se planean con semanas de anticipacion")
+                mensaje.append("\nCONSECUENCIA: El atacante ahora tiene credenciales internas.")
+                mensaje.append("Este tipo de ataques pueden comprometer toda la red.")
+                mensaje.append("Perdiste 25-30 puntos de integridad.")
+        
+        # ===== CORREO 6: BlackHat - Spear Phishing del hacker =====
+        elif "viendo" in asunto_lower or "blackhat" in correo.contenido.lower():
+            if accion == "phishing" and resultado["correcto"]:
+                mensaje.append("[ALERTA: ATAQUE DIRIGIDO - SPEAR PHISHING]")
+                mensaje.append("\n>> BIEN HECHO! Detectaste el ataque del hacker.")
+                mensaje.append("\nPor que es phishing:")
+                mensaje.append("- Dominio: Direccion IP '192.168.1.10' como remitente (muy sospechoso)")
+                mensaje.append("- Texto: Amenazas, tono intimidante, intento de manipulacion psicologica")
+                mensaje.append("- Contenido: Intenta sembrar duda sobre correos anteriores")
+                mensaje.append("- Sin logo, sin firma profesional")
+                mensaje.append("\nTACTICA: El atacante intenta hacerte dudar de tu criterio")
+                mensaje.append("y crear paranoia para que cometas errores en correos futuros.")
+                mensaje.append("\nNo te dejes intimidar. Confía en tu analisis tecnico.")
+                if razones_seleccionadas:
+                    razones_correctas_set = set(correo.razones_correctas)
+                    razones_seleccionadas_set = set(razones_seleccionadas)
+                    incorrectas = razones_seleccionadas_set - razones_correctas_set
+                    faltantes = razones_correctas_set - razones_seleccionadas_set
+                    if not incorrectas and not faltantes:
+                        mensaje.append("\n>> ANALISIS PERFECTO! Identificaste dominio y texto maliciosos.")
+                    else:
+                        if faltantes:
+                            mensaje.append(f"\n[!] Te falto notar: {', '.join(faltantes)}")
+            else:
+                mensaje.append("[ALERTA: ATAQUE DIRIGIDO - SPEAR PHISHING]")
+                mensaje.append("\n>> ERROR! Caiste en la trampa psicologica del hacker.")
+                mensaje.append("\nPor que esto era phishing:")
+                mensaje.append("- Direccion IP como remitente (192.168.1.10) es altamente sospechosa")
+                mensaje.append("- Contenido amenazante e intimidante")
+                mensaje.append("- Intento de manipulacion psicologica para hacerte dudar")
+                mensaje.append("- Ningun remitente legitimo usaria este tono")
+                mensaje.append("\nTACTICA: El atacante queria confundirte y sembrar paranoia")
+                mensaje.append("para que cometieras errores en analisis futuros.")
+                mensaje.append("\nCONSECUENCIA: Responder o interactuar expone tu posicion.")
+                mensaje.append("Perdiste 20-30 puntos de integridad.")
+        
+        # ===== Caso genérico (fallback) =====
+        else:
+            if correo.es_legitimo:
+                if accion == "legitimo":
+                    mensaje.append("[CORREO LEGITIMO]")
+                    mensaje.append("\n>> CORRECTO! Este correo era seguro.")
+                    mensaje.append(f"\nRemitente confiable: {correo.remitente}")
+                else:
+                    mensaje.append("[CORREO LEGITIMO]")
+                    mensaje.append("\n>> ERROR! Marcaste como phishing un correo legitimo.")
+                    mensaje.append(f"\nRemitente confiable: {correo.remitente}")
+            else:
+                if accion == "phishing":
+                    mensaje.append("[ALERTA: CORREO PHISHING]")
+                    mensaje.append("\n>> BIEN DETECTADO!")
+                else:
+                    mensaje.append("[ALERTA: CORREO PHISHING]")
+                    mensaje.append("\n>> ERROR! Dejaste pasar un correo malicioso.")
+        
+        mensaje.append("\n\nPresiona clic o Enter para continuar...")
+        return "\n".join(mensaje)
+    
     def obtener_mensaje_tutor(self, correo, accion, razones_seleccionadas):
-        if correo.es_legitimo and accion != "responder":
+        """Método legacy - ahora usa obtener_mensaje_tutor_completo"""
+        if correo.es_legitimo and accion == "phishing":
             return "¡Cuidado! Ese correo era legítimo. Reportarlos crea 'falsos positivos' y perdemos tiempo valioso."
 
-        elif not correo.es_legitimo and accion == "responder":
+        elif not correo.es_legitimo and accion == "legitimo":
             if correo.tipo_malicioso == "contraseñas":
                 return "¡Alerta Roja! Nunca entregues tus credenciales. Ningún admin te pedirá tu contraseña por correo. Fíjate en el dominio."
             elif correo.tipo_malicioso == "dinero":
@@ -1789,6 +2047,31 @@ class Level1Screen(BaseLevelScreen):
                  return f"Detectaste el correo, pero te faltó notar la falla en '{list(razones_faltantes)[0]}'. Los detalles importan."
 
         return "Sigue practicando tu criterio de seguridad."
+
+    def cerrar_tutor_y_feedback(self):
+        """Cierra el mensaje del tutor y vuelve a la bandeja de entrada."""
+        self.tutor_visible = False
+        self.tutor_mensaje = ""
+        self.feedback_visible = False
+        self.feedback_lines = []
+        
+        # Mostrar burla del hacker si hubo error
+        if hasattr(self, 'hubo_error_accion_temp') and self.hubo_error_accion_temp and hasattr(self, 'resultado_temp') and self.resultado_temp:
+            self.mostrar_burla_hacker(self.resultado_temp)
+        
+        # Ahora sí cerrar el correo y volver a la bandeja
+        if hasattr(self, 'correo_temp') and self.correo_temp:
+            self.correo_temp.visible = False
+        
+        # Limpiar temporales
+        self.resultado_temp = None
+        self.hubo_error_accion_temp = False
+        self.correo_temp = None
+        self.accion_temp = None
+        self.razones_seleccionadas_temp = None
+        
+        # Volver a la bandeja
+        self.siguiente_correo()
 
     def siguiente_correo(self):
         self.correo_abierto = None
@@ -1809,6 +2092,61 @@ class Level1Screen(BaseLevelScreen):
         self.tiempo_escritura = 0
 
     def handle_event(self, event):
+        # --- Manejar estado mostrando_tutor PRIMERO (antes de filtrar eventos) ---
+        if self.estado == "mostrando_tutor":
+            # Manejar scroll del tutor con rueda del mouse
+            if event.type == pygame.MOUSEWHEEL:
+                scroll_speed = 30
+                self.tutor_scroll_offset = max(0, min(self.tutor_max_scroll, 
+                                                      self.tutor_scroll_offset - event.y * scroll_speed))
+                return
+            
+            # Manejar arrastre de scrollbar
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                # Verificar si se hizo click en la scrollbar
+                if hasattr(self, 'tutor_scrollbar_rect') and self.tutor_scrollbar_rect.collidepoint(event.pos):
+                    self.tutor_scrollbar_dragging = True
+                    return
+                # Si no, cerrar el tutor
+                self.cerrar_tutor_y_feedback()
+                return
+            
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self.tutor_scrollbar_dragging = False
+                return
+            
+            if event.type == pygame.MOUSEMOTION:
+                if self.tutor_scrollbar_dragging and self.tutor_max_scroll > 0:
+                    # Calcular nueva posición del scroll basada en el movimiento del mouse
+                    box_h = 450
+                    content_h = box_h - 70
+                    box_y = 70
+                    content_y = box_y + 55
+                    
+                    # Calcular proporción basada en la posición del mouse
+                    mouse_y = event.pos[1]
+                    scrollbar_h = content_h
+                    relative_y = mouse_y - content_y
+                    
+                    # Calcular tamaño de la manija
+                    mensaje_lines = self._wrap_text(self.tutor_mensaje, self.small_font, 650 - 60)
+                    line_h = self.small_font.get_height() + 3
+                    total_content_h = len(mensaje_lines) * line_h
+                    handle_h = max(30, int(scrollbar_h * (content_h / total_content_h)))
+                    handle_y_range = scrollbar_h - handle_h
+                    
+                    # Calcular offset de scroll
+                    if handle_y_range > 0:
+                        proportion = max(0, min(1, relative_y / scrollbar_h))
+                        self.tutor_scroll_offset = proportion * self.tutor_max_scroll
+                return
+            
+            # Manejar Enter para cerrar
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                self.cerrar_tutor_y_feedback()
+                return
+            return
+        
         # --- (MODIFICADO) El panel de email ahora maneja MOUSEWHEEL y otros ---
         if self.estado == "correo_abierto" and self.email_panel:
             # Pasar todos los eventos no-click al panel por si los necesita (rueda, soltar, mover)
@@ -1829,11 +2167,8 @@ class Level1Screen(BaseLevelScreen):
                 self.inbox.handle_event(event, hacker_rect=self.hacker_sprite.rect)
                 # No hacer return aquí para permitir otros manejos si fuera necesario
 
-        # Procesar solo el clic izquierdo
+        # Procesar solo el clic izquierdo para otros estados
         if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
-            # NUEVO: Manejar Enter para cerrar feedback
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN and self.feedback_visible:
-                self.cerrar_feedback()
             return
 
         mx, my = event.pos
@@ -1858,6 +2193,56 @@ class Level1Screen(BaseLevelScreen):
                 self.iniciar_texto_animado(self.narrative_lines[self.narrative_index])
             return
 
+        # Manejar estado mostrando_tutor (scroll y cerrar)
+        if self.estado == "mostrando_tutor":
+            # Manejar scroll del tutor con rueda del mouse
+            if event.type == pygame.MOUSEWHEEL:
+                scroll_speed = 30
+                self.tutor_scroll_offset = max(0, min(self.tutor_max_scroll, 
+                                                      self.tutor_scroll_offset - event.y * scroll_speed))
+                return
+            
+            # Manejar arrastre de scrollbar
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                # Verificar si se hizo click en la scrollbar
+                if hasattr(self, 'tutor_scrollbar_rect') and self.tutor_scrollbar_rect.collidepoint(event.pos):
+                    self.tutor_scrollbar_dragging = True
+                    return
+                # Si no, cerrar el tutor
+                self.cerrar_tutor_y_feedback()
+                return
+            
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self.tutor_scrollbar_dragging = False
+                return
+            
+            if event.type == pygame.MOUSEMOTION:
+                if self.tutor_scrollbar_dragging and self.tutor_max_scroll > 0:
+                    # Calcular nueva posición del scroll basada en el movimiento del mouse
+                    box_h = 450
+                    content_h = box_h - 70
+                    box_y = 70
+                    content_y = box_y + 55
+                    
+                    # Calcular proporción basada en la posición del mouse
+                    mouse_y = event.pos[1]
+                    scrollbar_h = content_h
+                    relative_y = mouse_y - content_y
+                    
+                    # Calcular tamaño de la manija
+                    mensaje_lines = self._wrap_text(self.tutor_mensaje, self.small_font, 650 - 60)
+                    line_h = self.small_font.get_height() + 3
+                    total_content_h = len(mensaje_lines) * line_h
+                    handle_h = max(30, int(scrollbar_h * (content_h / total_content_h)))
+                    handle_y_range = scrollbar_h - handle_h
+                    
+                    # Calcular offset de scroll
+                    if handle_y_range > 0:
+                        proportion = max(0, min(1, relative_y / scrollbar_h))
+                        self.tutor_scroll_offset = proportion * self.tutor_max_scroll
+                return
+            return
+
         if self.tutor_visible:
             self.tutor_visible = False
             return
@@ -1874,11 +2259,6 @@ class Level1Screen(BaseLevelScreen):
                     return
             # Si no hay quiz final, volver al selector de niveles
             self.game.change_screen(LevelSelectScreen(self.game))
-            return
-
-        # NUEVO: Cierre del feedback con click
-        if self.feedback_visible:
-            self.cerrar_feedback()
             return
 
         if self.estado == "esperando_correo":
@@ -1909,21 +2289,29 @@ class Level1Screen(BaseLevelScreen):
                         self.email_panel = None
                         return
 
-    def cerrar_feedback(self):
+    def cerrar_tutor_y_feedback(self):
+        """Cierra el mensaje del tutor y vuelve a la bandeja de entrada."""
+        self.tutor_visible = False
+        self.tutor_mensaje = ""
         self.feedback_visible = False
         self.feedback_lines = []
         
-        # Ahora ejecutar tutor y burla si aplica
-        resultado = self.procesar_accion_correo(self.accion_temp, self.correo_temp)
-        if self.hubo_error_accion_temp:
-            self.mostrar_tutor_si_corresponde(self.correo_temp, self.accion_temp, self.razones_seleccionadas_temp)
-            self.mostrar_burla_hacker(resultado) # Mostrar burla si hubo error
+        # Mostrar burla del hacker si hubo error
+        if self.hubo_error_accion_temp and self.resultado_temp:
+            self.mostrar_burla_hacker(self.resultado_temp)
         
-        # Limpiar temporales y seguir
+        # Ahora sí cerrar el correo y volver a la bandeja
+        if self.correo_temp:
+            self.correo_temp.visible = False
+        
+        # Limpiar temporales
+        self.resultado_temp = None
         self.hubo_error_accion_temp = False
         self.correo_temp = None
         self.accion_temp = None
         self.razones_seleccionadas_temp = None
+        
+        # Volver a la bandeja
         self.siguiente_correo()
 
     def update(self, dt):
@@ -1971,13 +2359,13 @@ class Level1Screen(BaseLevelScreen):
                 self.texto_actual += self.texto_completo[len(self.texto_actual)]
 
         # Actualizar email panel (ahora maneja drag)
-        if self.estado == "correo_abierto" and self.email_panel:
+        if (self.estado == "correo_abierto" or self.estado == "mostrando_tutor") and self.email_panel:
             self.email_panel.update(dt)
 
-        # Actualizar tutor
-        if self.tutor_visible:
+        # Actualizar tutor (NO desaparecer automáticamente si está en estado mostrando_tutor)
+        if self.tutor_visible and self.estado != "mostrando_tutor":
             self.tutor_timer += dt
-            if self.tutor_timer >= 5000: # Aumentado a 5 segundos
+            if self.tutor_timer >= 5000: # 5 segundos para tutorías legacy
                 self.tutor_visible = False
                 
         # Actualizar timer de burla del hacker
@@ -2055,6 +2443,114 @@ class Level1Screen(BaseLevelScreen):
         elif self.estado == "correo_abierto" and self.email_panel:
             # NUEVO: Aplicar transición animada de deslizamiento
             self._render_email_panel_with_transition(surf)
+
+        elif self.estado == "mostrando_tutor":
+            # Renderizar el correo abierto primero (de fondo)
+            if self.email_panel:
+                self._render_email_panel_with_transition(surf)
+            
+            # Overlay semi-transparente
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 180))
+            surf.blit(overlay, (0, 0))
+            
+            # Dibujar tutor con su mensaje
+            if self.tutor_visible:
+                self.tutor_sprite.draw(surf)
+                
+                # Cuadro del mensaje del tutor (más grande para el análisis completo)
+                box_w, box_h = 650, 450
+                box_x = (SCREEN_W - box_w) // 2
+                box_y = 70
+                box_rect = pygame.Rect(box_x, box_y, box_w, box_h)
+                
+                # Fondo del cuadro
+                pygame.draw.rect(surf, (20, 30, 50), box_rect, border_radius=10)
+                pygame.draw.rect(surf, (0, 200, 255), box_rect, 3, border_radius=10)
+                
+                # Título
+                titulo_surf = self.font.render("ANÁLISIS DEL TUTOR", True, (0, 255, 200))
+                surf.blit(titulo_surf, (box_x + (box_w - titulo_surf.get_width()) // 2, box_y + 15))
+                
+                # Área de contenido con scroll
+                content_x = box_x + 20
+                content_y = box_y + 55
+                content_w = box_w - 60  # Espacio para scrollbar
+                content_h = box_h - 70
+                content_rect = pygame.Rect(content_x, content_y, content_w, content_h)
+                
+                # Mensaje del tutor (wrapped)
+                mensaje_lines = self._wrap_text(self.tutor_mensaje, self.small_font, content_w)
+                line_h = self.small_font.get_height() + 3
+                total_content_h = len(mensaje_lines) * line_h
+                
+                # Calcular scroll máximo
+                self.tutor_max_scroll = max(0, total_content_h - content_h)
+                self.tutor_scroll_offset = max(0, min(self.tutor_scroll_offset, self.tutor_max_scroll))
+                
+                # Crear superficie para el contenido con máscara
+                content_surf = pygame.Surface((content_w, content_h))
+                content_surf.fill((20, 30, 50))
+                
+                # Dibujar líneas del mensaje con offset de scroll
+                y_offset = -self.tutor_scroll_offset
+                for line in mensaje_lines:
+                    if -line_h < y_offset < content_h:  # Solo dibujar líneas visibles
+                        line_surf = self.small_font.render(line, True, (220, 220, 220))
+                        content_surf.blit(line_surf, (0, y_offset))
+                    y_offset += line_h
+                
+                surf.blit(content_surf, (content_x, content_y))
+                
+                # Dibujar scrollbar si el contenido es más alto que el área visible
+                if self.tutor_max_scroll > 0:
+                    scrollbar_x = box_x + box_w - 30
+                    scrollbar_y = content_y
+                    scrollbar_w = 12
+                    scrollbar_h = content_h
+                    
+                    # Fondo de la scrollbar
+                    scrollbar_bg_rect = pygame.Rect(scrollbar_x, scrollbar_y, scrollbar_w, scrollbar_h)
+                    pygame.draw.rect(surf, (40, 50, 70), scrollbar_bg_rect, border_radius=6)
+                    
+                    # Calcular tamaño y posición de la manija
+                    handle_h = max(30, int(scrollbar_h * (content_h / total_content_h)))
+                    handle_y_range = scrollbar_h - handle_h
+                    handle_y_offset = int((self.tutor_scroll_offset / self.tutor_max_scroll) * handle_y_range) if self.tutor_max_scroll > 0 else 0
+                    
+                    self.tutor_scrollbar_rect = pygame.Rect(
+                        scrollbar_x,
+                        scrollbar_y + handle_y_offset,
+                        scrollbar_w,
+                        handle_h
+                    )
+                    
+                    # Dibujar manija
+                    handle_color = (0, 180, 240) if self.tutor_scrollbar_dragging else (0, 150, 200)
+                    pygame.draw.rect(surf, handle_color, self.tutor_scrollbar_rect, border_radius=6)
+                    pygame.draw.rect(surf, (0, 200, 255), self.tutor_scrollbar_rect, 2, border_radius=6)
+            
+            # Dibujar burla del hacker si corresponde (en la esquina)
+            if self.burla_hacker_timer > 0 and self.burla_hacker:
+                hacker_box_w = 280
+                hacker_box_h = 80
+                hacker_box_rect = pygame.Rect(
+                    SCREEN_W - hacker_box_w - 15,
+                    15,
+                    hacker_box_w,
+                    hacker_box_h
+                )
+                pygame.draw.rect(surf, (40, 10, 10), hacker_box_rect, border_radius=10)
+                pygame.draw.rect(surf, (220, 50, 50), hacker_box_rect, 2, border_radius=10)
+                
+                wrapped_burla = self._wrap_text(self.burla_hacker, self.small_font, hacker_box_w - 20)
+                y_off = 10
+                for burla_line in wrapped_burla[:3]:
+                    burla_surf = self.small_font.render(burla_line, True, (255, 150, 150))
+                    surf.blit(burla_surf, (hacker_box_rect.x + 10, hacker_box_rect.y + y_off))
+                    y_off += self.small_font.get_height() + 4
+            
+            return  # No dibujar nada más cuando el tutor está activo
 
         elif self.estado == "fin_juego":
             fin_box = pygame.Rect(200, 200, 400, 200)
@@ -2812,12 +3308,8 @@ class EmailPanel:
 
         # botones
         self.btn_back = ImageButton((0, 0), (80, 30), label_text="Volver", font=font_text)
-        self.btn_responder = ImageButton((0, 0), (160, 44),
-            image_paths=[get_asset_path("assets/btn_responder.png"), get_asset_path("assets/btn_reply.png")], label_text="Responder", font=font_buttons)
-        self.btn_eliminar = ImageButton((0, 0), (160, 44),
-            image_paths=[get_asset_path("assets/btn_eliminar.png"), get_asset_path("assets/btn_delete.png")], label_text="Eliminar", font=font_buttons)
-        self.btn_reportar = ImageButton((0, 0), (160, 44),
-            image_paths=[get_asset_path("assets/btn_reportar.png"), get_asset_path("assets/btn_report.png")], label_text="Reportar", font=font_buttons)
+        self.btn_legitimo = ImageButton((0, 0), (180, 50), label_text="LEGÍTIMO", font=font_buttons)
+        self.btn_phishing = ImageButton((0, 0), (180, 50), label_text="PHISHING", font=font_buttons)
         
         # NUEVO: Botón de búsqueda por internet
         self.btn_buscar = ImageButton((0, 0), (120, 35), label_text="Buscar Web", font=font_text)
@@ -3554,12 +4046,10 @@ class EmailPanel:
                 return {"type": "back"}
             
             if self.mode == "reading":
-                if self.btn_responder.handle_event(event):
-                    return {"type": "accion", "accion": "responder"}
-                if self.btn_eliminar.handle_event(event):
-                    self.mode = "reasons"; self._accion_pendiente = "eliminar"; return None
-                if self.btn_reportar.handle_event(event):
-                    self.mode = "reasons"; self._accion_pendiente = "reportar"; return None
+                if self.btn_legitimo.handle_event(event):
+                    return {"type": "accion", "accion": "legitimo"}
+                if self.btn_phishing.handle_event(event):
+                    self.mode = "reasons"; self._accion_pendiente = "phishing"; return None
                 # NUEVO: Botón de búsqueda web
                 if self.btn_buscar.handle_event(event):
                     self.iniciar_busqueda_web()
@@ -3849,15 +4339,18 @@ class EmailPanel:
             self.btn_buscar.draw(surf)
 
         base_y = self.rect.bottom + 12
-        self.btn_responder.rect.update(self.rect.x, base_y, 160, 44)
-        self.btn_eliminar.rect.update(self.rect.x + 170, base_y, 160, 44)
-        self.btn_reportar.rect.update(self.rect.x + 340, base_y, 160, 44)
+        # Centrar los dos botones debajo del panel
+        btn_spacing = 20
+        total_width = 180 + btn_spacing + 180  # ancho de ambos botones + espacio
+        start_x = self.rect.centerx - total_width // 2
+        
+        self.btn_legitimo.rect.update(start_x, base_y, 180, 50)
+        self.btn_phishing.rect.update(start_x + 180 + btn_spacing, base_y, 180, 50)
         
         # Dibujar botones principales - desactivar hover si estamos en modo razones
         enable_hover = (self.mode != "reasons")
-        self.btn_responder.draw(surf, enable_hover)
-        self.btn_eliminar.draw(surf, enable_hover)
-        self.btn_reportar.draw(surf, enable_hover)
+        self.btn_legitimo.draw(surf, enable_hover)
+        self.btn_phishing.draw(surf, enable_hover)
 
         # overlay de razones
         if self.mode == "reasons":
@@ -6674,7 +7167,7 @@ class Game:
         # Estado de desbloqueo de niveles (memoria de sesión)
         self.unlocked_levels = {
             "Nivel 1": True,
-            "Nivel 2": False,
+            "Nivel 2": True,
         }
         # NUEVO: Bandera para controlar si el quiz inicial ya fue completado
         self.quiz_inicial_completado = False

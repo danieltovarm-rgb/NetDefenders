@@ -1,0 +1,417 @@
+[
+  {
+    "session_id": "20251206_143022",
+    "fecha_hora_completado": "2025-12-06 14:35:18",
+    "nombre_jugador": "Jugador",
+    "resumen": {
+      "quiz_inicial_correctas": 7,
+      "quiz_final_correctas": 10,
+      "total_preguntas": 12,
+      "mejora_absoluta": 3,
+      "mejora_porcentual": 25.0,
+      "porcentaje_inicial": 58.33,
+      "porcentaje_final": 83.33
+    },
+    "desglose_por_categoria": {
+      "phishing_nivel1": {
+        "inicial_correctas": 3,
+        "final_correctas": 5,
+        "total_preguntas": 6,
+        "mejora": 2
+      },
+      "malware_nivel2": {
+        "inicial_correctas": 4,
+        "final_correctas": 5,
+        "total_preguntas": 6,
+        "mejora": 1
+      }
+    },
+    "quiz_inicial_respuestas": [
+      {
+        "pregunta_num": 1,
+        "pregunta": "¿Qué indica una URL acortada sospechosa en un correo?",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 1,
+        "es_correcta": false,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:30:35"
+      },
+      {
+        "pregunta_num": 2,
+        "pregunta": "Señal clara de phishing en el cuerpo del mensaje:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 0,
+        "es_correcta": true,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:30:48"
+      },
+      {
+        "pregunta_num": 3,
+        "pregunta": "Dominio legítimo típico para empresa sería:",
+        "respuesta_seleccionada": 2,
+        "respuesta_correcta": 2,
+        "es_correcta": true,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:31:02"
+      },
+      {
+        "pregunta_num": 4,
+        "pregunta": "Acción correcta ante un correo que pide credenciales urgente:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 1,
+        "es_correcta": false,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:31:15"
+      },
+      {
+        "pregunta_num": 5,
+        "pregunta": "Un phishing busca principalmente:",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 1,
+        "es_correcta": true,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:31:28"
+      },
+      {
+        "pregunta_num": 6,
+        "pregunta": "Adjunto inesperado .exe en correo interno:",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 0,
+        "es_correcta": false,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:31:41"
+      },
+      {
+        "pregunta_num": 7,
+        "pregunta": "Ransomware se caracteriza por:",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 1,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:31:54"
+      },
+      {
+        "pregunta_num": 8,
+        "pregunta": "Adware provoca principalmente:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 0,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:32:07"
+      },
+      {
+        "pregunta_num": 9,
+        "pregunta": "Miner (cryptominer) en el sistema causa:",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 1,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:32:20"
+      },
+      {
+        "pregunta_num": 10,
+        "pregunta": "Spyware busca:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 0,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:32:33"
+      },
+      {
+        "pregunta_num": 11,
+        "pregunta": "Medida segura al detectar archivo sospechoso infectado:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 1,
+        "es_correcta": false,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:32:46"
+      },
+      {
+        "pregunta_num": 12,
+        "pregunta": "Primera acción para analizar carpeta ante síntomas:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 0,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:32:59"
+      }
+    ],
+    "quiz_final_respuestas": [
+      {
+        "pregunta_num": 1,
+        "pregunta": "¿Qué indica una URL acortada sospechosa en un correo?",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 1,
+        "es_correcta": true,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:34:22"
+      },
+      {
+        "pregunta_num": 2,
+        "pregunta": "Señal clara de phishing en el cuerpo del mensaje:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 0,
+        "es_correcta": true,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:34:35"
+      },
+      {
+        "pregunta_num": 3,
+        "pregunta": "Dominio legítimo típico para empresa sería:",
+        "respuesta_seleccionada": 2,
+        "respuesta_correcta": 2,
+        "es_correcta": true,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:34:48"
+      },
+      {
+        "pregunta_num": 4,
+        "pregunta": "Acción correcta ante un correo que pide credenciales urgente:",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 1,
+        "es_correcta": true,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:35:01"
+      },
+      {
+        "pregunta_num": 5,
+        "pregunta": "Un phishing busca principalmente:",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 1,
+        "es_correcta": true,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:35:14"
+      },
+      {
+        "pregunta_num": 6,
+        "pregunta": "Adjunto inesperado .exe en correo interno:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 0,
+        "es_correcta": true,
+        "categoria": "level1",
+        "timestamp": "2025-12-06 14:35:27"
+      },
+      {
+        "pregunta_num": 7,
+        "pregunta": "Ransomware se caracteriza por:",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 1,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:35:40"
+      },
+      {
+        "pregunta_num": 8,
+        "pregunta": "Adware provoca principalmente:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 0,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:35:53"
+      },
+      {
+        "pregunta_num": 9,
+        "pregunta": "Miner (cryptominer) en el sistema causa:",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 1,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:36:06"
+      },
+      {
+        "pregunta_num": 10,
+        "pregunta": "Spyware busca:",
+        "respuesta_seleccionada": 0,
+        "respuesta_correcta": 0,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:36:19"
+      },
+      {
+        "pregunta_num": 11,
+        "pregunta": "Medida segura al detectar archivo sospechoso infectado:",
+        "respuesta_seleccionada": 1,
+        "respuesta_correcta": 1,
+        "es_correcta": true,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:36:32"
+      },
+      {
+        "pregunta_num": 12,
+        "pregunta": "Primera acción para analizar carpeta ante síntomas:",
+        "respuesta_seleccionada": 2,
+        "respuesta_correcta": 0,
+        "es_correcta": false,
+        "categoria": "level2",
+        "timestamp": "2025-12-06 14:36:45"
+      }
+    ],
+    "analisis_por_pregunta": [
+      {
+        "pregunta_num": 1,
+        "pregunta": "¿Qué indica una URL acortada sospechosa en un correo?",
+        "categoria": "level1",
+        "inicial_correcta": false,
+        "final_correcta": true,
+        "mejoro": true,
+        "empeoro": false,
+        "sin_cambio": false,
+        "respuesta_inicial": 0,
+        "respuesta_final": 1,
+        "respuesta_correcta": 1
+      },
+      {
+        "pregunta_num": 2,
+        "pregunta": "Señal clara de phishing en el cuerpo del mensaje:",
+        "categoria": "level1",
+        "inicial_correcta": true,
+        "final_correcta": true,
+        "mejoro": false,
+        "empeoro": false,
+        "sin_cambio": true,
+        "respuesta_inicial": 0,
+        "respuesta_final": 0,
+        "respuesta_correcta": 0
+      },
+      {
+        "pregunta_num": 3,
+        "pregunta": "Dominio legítimo típico para empresa sería:",
+        "categoria": "level1",
+        "inicial_correcta": true,
+        "final_correcta": true,
+        "mejoro": false,
+        "empeoro": false,
+        "sin_cambio": true,
+        "respuesta_inicial": 2,
+        "respuesta_final": 2,
+        "respuesta_correcta": 2
+      },
+      {
+        "pregunta_num": 4,
+        "pregunta": "Acción correcta ante un correo que pide credenciales urgente:",
+        "categoria": "level1",
+        "inicial_correcta": false,
+        "final_correcta": true,
+        "mejoro": true,
+        "empeoro": false,
+        "sin_cambio": false,
+        "respuesta_inicial": 0,
+        "respuesta_final": 1,
+        "respuesta_correcta": 1
+      },
+      {
+        "pregunta_num": 5,
+        "pregunta": "Un phishing busca principalmente:",
+        "categoria": "level1",
+        "inicial_correcta": true,
+        "final_correcta": true,
+        "mejoro": false,
+        "empeoro": false,
+        "sin_cambio": true,
+        "respuesta_inicial": 1,
+        "respuesta_final": 1,
+        "respuesta_correcta": 1
+      },
+      {
+        "pregunta_num": 6,
+        "pregunta": "Adjunto inesperado .exe en correo interno:",
+        "categoria": "level1",
+        "inicial_correcta": false,
+        "final_correcta": true,
+        "mejoro": true,
+        "empeoro": false,
+        "sin_cambio": false,
+        "respuesta_inicial": 1,
+        "respuesta_final": 0,
+        "respuesta_correcta": 0
+      },
+      {
+        "pregunta_num": 7,
+        "pregunta": "Ransomware se caracteriza por:",
+        "categoria": "level2",
+        "inicial_correcta": true,
+        "final_correcta": true,
+        "mejoro": false,
+        "empeoro": false,
+        "sin_cambio": true,
+        "respuesta_inicial": 1,
+        "respuesta_final": 1,
+        "respuesta_correcta": 1
+      },
+      {
+        "pregunta_num": 8,
+        "pregunta": "Adware provoca principalmente:",
+        "categoria": "level2",
+        "inicial_correcta": true,
+        "final_correcta": true,
+        "mejoro": false,
+        "empeoro": false,
+        "sin_cambio": true,
+        "respuesta_inicial": 0,
+        "respuesta_final": 0,
+        "respuesta_correcta": 0
+      },
+      {
+        "pregunta_num": 9,
+        "pregunta": "Miner (cryptominer) en el sistema causa:",
+        "categoria": "level2",
+        "inicial_correcta": true,
+        "final_correcta": true,
+        "mejoro": false,
+        "empeoro": false,
+        "sin_cambio": true,
+        "respuesta_inicial": 1,
+        "respuesta_final": 1,
+        "respuesta_correcta": 1
+      },
+      {
+        "pregunta_num": 10,
+        "pregunta": "Spyware busca:",
+        "categoria": "level2",
+        "inicial_correcta": true,
+        "final_correcta": true,
+        "mejoro": false,
+        "empeoro": false,
+        "sin_cambio": true,
+        "respuesta_inicial": 0,
+        "respuesta_final": 0,
+        "respuesta_correcta": 0
+      },
+      {
+        "pregunta_num": 11,
+        "pregunta": "Medida segura al detectar archivo sospechoso infectado:",
+        "categoria": "level2",
+        "inicial_correcta": false,
+        "final_correcta": true,
+        "mejoro": true,
+        "empeoro": false,
+        "sin_cambio": false,
+        "respuesta_inicial": 0,
+        "respuesta_final": 1,
+        "respuesta_correcta": 1
+      },
+      {
+        "pregunta_num": 12,
+        "pregunta": "Primera acción para analizar carpeta ante síntomas:",
+        "categoria": "level2",
+        "inicial_correcta": true,
+        "final_correcta": false,
+        "mejoro": false,
+        "empeoro": true,
+        "sin_cambio": false,
+        "respuesta_inicial": 0,
+        "respuesta_final": 2,
+        "respuesta_correcta": 0
+      }
+    ],
+    "estadisticas": {
+      "preguntas_mejoradas": 4,
+      "preguntas_empeoradas": 1,
+      "preguntas_sin_cambio": 7,
+      "errores_iniciales": 5,
+      "errores_finales": 2,
+      "preguntas_siempre_correctas": 7,
+      "preguntas_siempre_incorrectas": 0
+    }
+  }
+]

@@ -345,6 +345,13 @@ class PlayerStats:
         self.pre_quiz_level2_correct = 0
         self.post_quiz_level1_correct = 0
         self.post_quiz_level2_correct = 0
+        
+        # === NUEVO: SISTEMA DE RECOLECCIÓN DE DATOS DE QUIZ ===
+        self.quiz_data_file = "quiz_data_collection.json"
+        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.pre_quiz_answers = []  # Lista de respuestas del quiz inicial
+        self.post_quiz_answers = []  # Lista de respuestas del quiz final
+        self.quiz_questions_bank = []  # Banco de preguntas para referencia
     
     def set_current_level(self, level: int):
         """Cambia el nivel actual"""
@@ -481,6 +488,38 @@ class PlayerStats:
         }
 
     # ================== QUIZ MÉTODOS ==================
+    
+    def set_quiz_questions(self, questions):
+        """Guarda el banco de preguntas para referencia"""
+        self.quiz_questions_bank = questions
+    
+    def record_quiz_answer(self, mode: str, question_index: int, question_text: str, 
+                          selected_answer: int, correct_answer: int, category: str):
+        """Registra una respuesta individual del quiz
+        
+        Args:
+            mode: 'pre' o 'post'
+            question_index: índice de la pregunta (0-11)
+            question_text: texto de la pregunta
+            selected_answer: índice de la respuesta seleccionada
+            correct_answer: índice de la respuesta correcta
+            category: 'level1' o 'level2'
+        """
+        answer_data = {
+            "pregunta_num": question_index + 1,
+            "pregunta": question_text,
+            "respuesta_seleccionada": selected_answer,
+            "respuesta_correcta": correct_answer,
+            "es_correcta": selected_answer == correct_answer,
+            "categoria": category,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        if mode == 'pre':
+            self.pre_quiz_answers.append(answer_data)
+        elif mode in ('post', 'final'):
+            self.post_quiz_answers.append(answer_data)
+    
     def record_quiz_score(self, mode: str, total_correct: int, cat_breakdown: dict):
         """Registra resultado del quiz.
         mode: 'pre' | 'post' | 'final' (final se trata como post)
@@ -516,6 +555,9 @@ class PlayerStats:
                     "post_lvl2": self.post_quiz_level2_correct
                 }
             )
+            # NUEVO: Guardar datos completos del quiz si es post/final
+            if mode in ('post', 'final'):
+                self.save_quiz_data()
 
     def get_quiz_summary(self) -> dict:
         return {
@@ -527,6 +569,123 @@ class PlayerStats:
             "post_lvl1": self.post_quiz_level1_correct,
             "post_lvl2": self.post_quiz_level2_correct
         }
+    
+    def save_quiz_data(self):
+        """Guarda todos los datos del quiz en archivo JSON con análisis detallado"""
+        try:
+            # Cargar datos existentes si el archivo existe
+            existing_data = []
+            if os.path.exists(self.quiz_data_file):
+                with open(self.quiz_data_file, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
+            
+            # Analizar mejoras y errores por pregunta
+            comparison_by_question = self._compare_answers_by_question()
+            
+            # Crear registro completo de esta sesión
+            session_data = {
+                "session_id": self.session_id,
+                "fecha_hora_completado": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "nombre_jugador": self.name,
+                
+                # Resumen general
+                "resumen": {
+                    "quiz_inicial_correctas": self.pre_quiz_score,
+                    "quiz_final_correctas": self.post_quiz_score,
+                    "total_preguntas": self.quiz_total_questions,
+                    "mejora_absoluta": self.post_quiz_score - self.pre_quiz_score,
+                    "mejora_porcentual": round(self.quiz_improvement, 2),
+                    "porcentaje_inicial": round((self.pre_quiz_score / self.quiz_total_questions) * 100, 2),
+                    "porcentaje_final": round((self.post_quiz_score / self.quiz_total_questions) * 100, 2)
+                },
+                
+                # Desglose por categoría
+                "desglose_por_categoria": {
+                    "phishing_nivel1": {
+                        "inicial_correctas": self.pre_quiz_level1_correct,
+                        "final_correctas": self.post_quiz_level1_correct,
+                        "total_preguntas": 6,
+                        "mejora": self.post_quiz_level1_correct - self.pre_quiz_level1_correct
+                    },
+                    "malware_nivel2": {
+                        "inicial_correctas": self.pre_quiz_level2_correct,
+                        "final_correctas": self.post_quiz_level2_correct,
+                        "total_preguntas": 6,
+                        "mejora": self.post_quiz_level2_correct - self.pre_quiz_level2_correct
+                    }
+                },
+                
+                # Respuestas detalladas del quiz inicial
+                "quiz_inicial_respuestas": self.pre_quiz_answers,
+                
+                # Respuestas detalladas del quiz final
+                "quiz_final_respuestas": self.post_quiz_answers,
+                
+                # Comparación pregunta por pregunta
+                "analisis_por_pregunta": comparison_by_question,
+                
+                # Estadísticas adicionales
+                "estadisticas": {
+                    "preguntas_mejoradas": len([c for c in comparison_by_question if c["mejoro"]]),
+                    "preguntas_empeoradas": len([c for c in comparison_by_question if c["empeoro"]]),
+                    "preguntas_sin_cambio": len([c for c in comparison_by_question if c["sin_cambio"]]),
+                    "errores_iniciales": self.quiz_total_questions - self.pre_quiz_score,
+                    "errores_finales": self.quiz_total_questions - self.post_quiz_score,
+                    "preguntas_siempre_correctas": len([c for c in comparison_by_question if c["inicial_correcta"] and c["final_correcta"]]),
+                    "preguntas_siempre_incorrectas": len([c for c in comparison_by_question if not c["inicial_correcta"] and not c["final_correcta"]])
+                }
+            }
+            
+            # Agregar a los datos existentes
+            existing_data.append(session_data)
+            
+            # Guardar todo el archivo
+            with open(self.quiz_data_file, 'w', encoding='utf-8') as f:
+                json.dump(existing_data, f, indent=2, ensure_ascii=False)
+            
+            print(f"✓ Datos del quiz guardados exitosamente en {self.quiz_data_file}")
+            return True
+            
+        except Exception as e:
+            print(f"Error guardando datos del quiz: {e}")
+            return False
+    
+    def _compare_answers_by_question(self):
+        """Compara respuestas pregunta por pregunta entre quiz inicial y final"""
+        comparisons = []
+        
+        # Asegurar que tengamos el mismo número de respuestas
+        min_len = min(len(self.pre_quiz_answers), len(self.post_quiz_answers))
+        
+        for i in range(min_len):
+            pre_answer = self.pre_quiz_answers[i]
+            post_answer = self.post_quiz_answers[i]
+            
+            inicial_correcta = pre_answer["es_correcta"]
+            final_correcta = post_answer["es_correcta"]
+            
+            # Determinar tipo de cambio
+            mejoro = not inicial_correcta and final_correcta
+            empeoro = inicial_correcta and not final_correcta
+            sin_cambio = inicial_correcta == final_correcta
+            
+            comparison = {
+                "pregunta_num": i + 1,
+                "pregunta": pre_answer["pregunta"],
+                "categoria": pre_answer["categoria"],
+                "inicial_correcta": inicial_correcta,
+                "final_correcta": final_correcta,
+                "mejoro": mejoro,
+                "empeoro": empeoro,
+                "sin_cambio": sin_cambio,
+                "respuesta_inicial": pre_answer["respuesta_seleccionada"],
+                "respuesta_final": post_answer["respuesta_seleccionada"],
+                "respuesta_correcta": pre_answer["respuesta_correcta"]
+            }
+            
+            comparisons.append(comparison)
+        
+        return comparisons
 
 
 # ========== SISTEMA DE NIVEL 2: RECURSOS Y LIMPIEZA DE PC ==========
