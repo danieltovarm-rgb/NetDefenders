@@ -1093,6 +1093,201 @@ class LevelSelectScreen(Screen):
             
             y_offset += 30
 
+# --------- Pantalla de Ajustes ----------
+class SettingsScreen(Screen):
+    def __init__(self, game):
+        super().__init__(game)
+        try:
+            self.title_font = pygame.font.Font(self.game.font_path, 60)
+            self.option_font = pygame.font.Font(self.game.font_path, 28)
+            self.small_font = pygame.font.Font(self.game.font_path, 20)
+        except Exception:
+            self.title_font = pygame.font.SysFont("Consolas", 50)
+            self.option_font = pygame.font.SysFont("Consolas", 24)
+            self.small_font = pygame.font.SysFont("Consolas", 18)
+        
+        # Fondo del menú compartido
+        try:
+            self.background = pygame.image.load(get_asset_path("assets/fondo_menu.png")).convert()
+            self.background = pygame.transform.scale(self.background, (SCREEN_W, SCREEN_H))
+        except Exception:
+            self.background = None
+        
+        # Matrix rain
+        self.matrix = MatrixRain(
+            SCREEN_W, SCREEN_H,
+            font_size=12,
+            column_density=0.4,
+            font_path=getattr(self.game, 'font_path', None)
+        )
+        
+        # Crear opciones de ajustes
+        self.settings_options = [
+            {"key": "show_fps", "label": "Mostrar FPS", "type": "toggle"},
+            {"key": "fullscreen", "label": "Pantalla Completa", "type": "toggle"}
+        ]
+        
+        # Posiciones de los elementos
+        self.option_y_start = 180
+        self.option_spacing = 70
+        self.option_rects = []
+        self.slider_rects = []  # Para sliders
+        self.dragging_slider = None
+        
+        for i, opt in enumerate(self.settings_options):
+            y = self.option_y_start + i * self.option_spacing
+            if opt["type"] == "toggle":
+                # Botón toggle
+                toggle_rect = pygame.Rect(SCREEN_W - 250, y - 15, 100, 40)
+                self.option_rects.append({"option": opt, "rect": toggle_rect, "type": "toggle"})
+            elif opt["type"] == "slider":
+                # Barra de slider
+                slider_rect = pygame.Rect(SCREEN_W - 350, y - 5, 250, 20)
+                self.slider_rects.append({"option": opt, "rect": slider_rect})
+                self.option_rects.append({"option": opt, "rect": slider_rect, "type": "slider"})
+        
+        # Botón volver
+        self.volver_rect = pygame.Rect(50, SCREEN_H - 80, 150, 50)
+    
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            
+            # Botón volver
+            if self.volver_rect.collidepoint(mx, my):
+                self.game.change_screen(MenuScreen(self.game))
+                return
+            
+            # Click en opciones
+            for item in self.option_rects:
+                if item["rect"].collidepoint(mx, my):
+                    opt = item["option"]
+                    if opt["type"] == "toggle":
+                        # Invertir valor booleano
+                        self.game.settings[opt["key"]] = not self.game.settings[opt["key"]]
+                        
+                        # Aplicar cambio de fullscreen inmediatamente
+                        if opt["key"] == "fullscreen":
+                            if self.game.settings["fullscreen"]:
+                                self.game.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN)
+                            else:
+                                self.game.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+                    elif opt["type"] == "slider":
+                        # Iniciar arrastre del slider
+                        self.dragging_slider = opt
+                        self._update_slider_value(mx, item["rect"])
+        
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.dragging_slider = None
+        
+        elif event.type == pygame.MOUSEMOTION:
+            if self.dragging_slider:
+                mx, my = event.pos
+                # Encontrar el rect del slider que se está arrastrando
+                for item in self.option_rects:
+                    if item["option"] == self.dragging_slider:
+                        self._update_slider_value(mx, item["rect"])
+                        break
+    
+    def _update_slider_value(self, mouse_x, slider_rect):
+        """Actualiza el valor del slider basado en la posición del mouse"""
+        opt = self.dragging_slider
+        # Calcular proporción dentro del slider
+        relative_x = max(0, min(mouse_x - slider_rect.x, slider_rect.width))
+        proportion = relative_x / slider_rect.width
+        
+        # Calcular nuevo valor
+        value_range = opt["max"] - opt["min"]
+        new_value = opt["min"] + proportion * value_range
+        
+        # Redondear según el step
+        if "step" in opt:
+            new_value = round(new_value / opt["step"]) * opt["step"]
+        
+        new_value = max(opt["min"], min(opt["max"], new_value))
+        self.game.settings[opt["key"]] = new_value
+    
+    def update(self, dt):
+        self.matrix.update(dt)
+    
+    def render(self, surf):
+        # Fondo
+        if self.background:
+            surf.blit(self.background, (0, 0))
+        else:
+            surf.fill((20, 20, 40))
+        
+        self.matrix.draw(surf, alpha=80)
+        
+        # Título
+        title = self.title_font.render("AJUSTES", True, (255, 255, 255))
+        draw_glitch_text_surf(surf, title, (SCREEN_W // 2, 80), scale=1.0, glitch_prob=0.08)
+        
+        # Opciones
+        mx, my = pygame.mouse.get_pos()
+        for i, opt in enumerate(self.settings_options):
+            y = self.option_y_start + i * self.option_spacing
+            
+            # Label
+            label = self.option_font.render(opt["label"], True, (200, 200, 200))
+            surf.blit(label, (100, y - 10))
+            
+            if opt["type"] == "toggle":
+                # Dibujar toggle
+                toggle_rect = pygame.Rect(SCREEN_W - 250, y - 15, 100, 40)
+                is_on = self.game.settings[opt["key"]]
+                
+                # Fondo del toggle
+                bg_color = (50, 200, 50) if is_on else (100, 100, 100)
+                hover = toggle_rect.collidepoint(mx, my)
+                if hover:
+                    bg_color = tuple(min(255, c + 30) for c in bg_color)
+                
+                pygame.draw.rect(surf, bg_color, toggle_rect, border_radius=20)
+                pygame.draw.rect(surf, (255, 255, 255), toggle_rect, 2, border_radius=20)
+                
+                # Texto del toggle
+                text = "ON" if is_on else "OFF"
+                text_surf = self.small_font.render(text, True, (255, 255, 255))
+                text_rect = text_surf.get_rect(center=toggle_rect.center)
+                surf.blit(text_surf, text_rect)
+            
+            elif opt["type"] == "slider":
+                # Dibujar slider
+                slider_rect = pygame.Rect(SCREEN_W - 350, y - 5, 250, 20)
+                
+                # Fondo del slider
+                pygame.draw.rect(surf, (60, 60, 80), slider_rect, border_radius=10)
+                pygame.draw.rect(surf, (150, 150, 180), slider_rect, 2, border_radius=10)
+                
+                # Relleno del slider (proporcional al valor)
+                value = self.game.settings[opt["key"]]
+                proportion = (value - opt["min"]) / (opt["max"] - opt["min"])
+                fill_width = int(slider_rect.width * proportion)
+                fill_rect = pygame.Rect(slider_rect.x, slider_rect.y, fill_width, slider_rect.height)
+                pygame.draw.rect(surf, (100, 150, 255), fill_rect, border_radius=10)
+                
+                # Manija del slider
+                handle_x = slider_rect.x + fill_width
+                handle_rect = pygame.Rect(handle_x - 8, slider_rect.y - 5, 16, 30)
+                pygame.draw.rect(surf, (200, 200, 220), handle_rect, border_radius=8)
+                pygame.draw.rect(surf, (255, 255, 255), handle_rect, 2, border_radius=8)
+                
+                # Valor del slider
+                value_text = f"{int(value * 100)}%"
+                value_surf = self.small_font.render(value_text, True, (255, 255, 255))
+                surf.blit(value_surf, (slider_rect.right + 15, y - 10))
+        
+        # Botón volver
+        hover_volver = self.volver_rect.collidepoint(mx, my)
+        volver_color = (80, 120, 180) if hover_volver else (60, 90, 140)
+        pygame.draw.rect(surf, volver_color, self.volver_rect, border_radius=10)
+        pygame.draw.rect(surf, (150, 180, 255), self.volver_rect, 3, border_radius=10)
+        
+        volver_text = self.option_font.render("VOLVER", True, (255, 255, 255))
+        volver_text_rect = volver_text.get_rect(center=self.volver_rect.center)
+        surf.blit(volver_text, volver_text_rect)
+
 # --------- Pantalla Menú ----------
 class MenuScreen(Screen):
     def __init__(self, game):
@@ -1102,7 +1297,7 @@ class MenuScreen(Screen):
             self.font = pygame.font.Font(self.game.font_path, 70)
         except Exception:
             self.font = pygame.font.SysFont("Consolas", 40)
-        self.options = ["JUGAR", "SALIR"]
+        self.options = ["JUGAR", "AJUSTES", "SALIR"]
         self.buttons = []  # (opt, txt, rect, anim)
         self.create_buttons()
         # Fondo del menú 
@@ -1149,6 +1344,8 @@ class MenuScreen(Screen):
                         else:
                             # Si ya se completó, ir directo a la selección de niveles
                             self.game.change_screen(LevelSelectScreen(self.game))
+                    elif opt == "AJUSTES":
+                        self.game.change_screen(SettingsScreen(self.game))
                     elif opt == "SALIR":
                         pygame.quit();
                         sys.exit()
@@ -1233,6 +1430,20 @@ class Level1Screen(BaseLevelScreen):
             scale=(200, 200)
         )
 
+        # Imagen de fondo del nivel 1 con blur suave
+        try:
+            background_path = get_asset_path("assets/nivel1_background4.jpg")
+            temp_bg = pygame.image.load(background_path).convert()
+            temp_bg = pygame.transform.scale(temp_bg, (SCREEN_W, SCREEN_H))
+            # Aplicar blur gaussiano suave (3-5 iteraciones de smoothscale)
+            blur_iterations = 4
+            for _ in range(blur_iterations):
+                temp_bg = pygame.transform.smoothscale(temp_bg, (SCREEN_W // 2, SCREEN_H // 2))
+                temp_bg = pygame.transform.smoothscale(temp_bg, (SCREEN_W, SCREEN_H))
+            self.background = temp_bg
+        except Exception:
+            self.background = None
+
         # Tutor
         self.tutor_sprite = ProtagonistaSprite(SCREEN_W - 150, SCREEN_H - 100)
         self.tutor_visible = False
@@ -1285,6 +1496,17 @@ class Level1Screen(BaseLevelScreen):
         # NUEVO: Para el cuadro de feedback superpuesto
         self.feedback_lines = []  # Lista de líneas de feedback
         self.feedback_visible = False  # Estado para mostrar el cuadro
+        
+        # NUEVO: Animaciones y efectos visuales
+        self.vida_anterior_jugador = self.protagonista.vida
+        self.vida_anterior_hacker = self.hacker_logic.vida
+        self.animacion_vida_timer = 0
+        self.animacion_hack_timer = 0
+        self.scanline_offset = 0  # Para efecto scanline animado
+        self.glitch_timer = 0
+        self.should_glitch = False
+        # Transición de EmailPanel
+        self.email_panel_transition = 0.0  # 0.0 = cerrado, 1.0 = completamente abierto
 
     def _player_won(self):
         # Ganó si el hacker llegó a 0 o si al finalizar tiene más vida
@@ -1706,6 +1928,40 @@ class Level1Screen(BaseLevelScreen):
 
     def update(self, dt):
         self.hacker_sprite.update(dt)
+        self.protagonista_sprite.update(dt)
+        
+        # NUEVO: Actualizar efectos visuales
+        # Scanline animado
+        self.scanline_offset = (self.scanline_offset + dt * 0.05) % SCREEN_H
+        
+        # Glitch intermitente (cada 3-5 segundos)
+        self.glitch_timer += dt
+        if self.glitch_timer > random.randint(3000, 5000):
+            self.should_glitch = True
+            self.glitch_timer = 0
+        elif self.should_glitch and self.glitch_timer > 150:  # Glitch dura 150ms
+            self.should_glitch = False
+            
+        # Detectar cambios de vida para activar animación
+        if self.protagonista.vida != self.vida_anterior_jugador:
+            self.animacion_vida_timer = 1000  # 1 segundo de animación
+            self.vida_anterior_jugador = self.protagonista.vida
+        if self.hacker_logic.vida != self.vida_anterior_hacker:
+            self.animacion_hack_timer = 1000
+            self.vida_anterior_hacker = self.hacker_logic.vida
+            
+        # Decrementar timers de animación
+        if self.animacion_vida_timer > 0:
+            self.animacion_vida_timer = max(0, self.animacion_vida_timer - dt)
+        if self.animacion_hack_timer > 0:
+            self.animacion_hack_timer = max(0, self.animacion_hack_timer - dt)
+            
+        # Transición suave de EmailPanel
+        if self.estado == "correo_abierto" and self.email_panel:
+            if self.email_panel_transition < 1.0:
+                self.email_panel_transition = min(1.0, self.email_panel_transition + dt * 0.003)  # 0.003 = velocidad
+        else:
+            self.email_panel_transition = 0.0
 
         # Actualizar texto animado (solo narrativa inicial)
         if (self.show_narrative and self.estado == "narrativa_inicial") and len(self.texto_actual) < len(self.texto_completo):
@@ -1731,16 +1987,36 @@ class Level1Screen(BaseLevelScreen):
                 self.burla_hacker = ""
 
     def render(self, surf):
-        surf.fill((0, 0, 0))
+        # Dibujar fondo si existe
+        if getattr(self, 'background', None):
+            surf.blit(self.background, (0, 0))
+        else:
+            surf.fill((0, 0, 0))
+            
+        # NUEVO: Efecto scanline CRT sutil
+        self._draw_scanlines(surf)
+        
+        # NUEVO: Efecto glitch intermitente
+        if self.should_glitch:
+            self._apply_glitch_effect(surf)
 
         # 1. Fondo y personajes (primero)
         self.protagonista_sprite.draw(surf)
         self.hacker_sprite.draw(surf)
 
-        # 2. HUD siempre visible
-        vida_txt = self.font.render(f"Integridad Red: {self.protagonista.vida}", True, (200, 200, 200))
+        # 2. HUD siempre visible con animación
+        # Integridad Red (jugador)
+        vida_color = self._get_animated_color((200, 200, 200), (255, 100, 100), self.animacion_vida_timer)
+        vida_alpha = self._get_pulse_alpha(self.animacion_vida_timer)
+        vida_txt = self.font.render(f"Integridad Red: {self.protagonista.vida}", True, vida_color)
+        vida_txt.set_alpha(vida_alpha)
         surf.blit(vida_txt, (20, 20))
-        hack_txt = self.font.render(f"Progreso Hacker: {self.hacker_logic.vida}", True, (200, 200, 200))
+        
+        # Progreso Hacker
+        hack_color = self._get_animated_color((200, 200, 200), (100, 255, 100), self.animacion_hack_timer)
+        hack_alpha = self._get_pulse_alpha(self.animacion_hack_timer)
+        hack_txt = self.font.render(f"Progreso Hacker: {self.hacker_logic.vida}", True, hack_color)
+        hack_txt.set_alpha(hack_alpha)
         surf.blit(hack_txt, (SCREEN_W - 280, 20))
 
         # 3. Elementos principales según estado
@@ -1777,7 +2053,8 @@ class Level1Screen(BaseLevelScreen):
             self.inbox.render(surf, hacker_rect=self.hacker_sprite.rect)
 
         elif self.estado == "correo_abierto" and self.email_panel:
-            self.email_panel.render(surf)
+            # NUEVO: Aplicar transición animada de deslizamiento
+            self._render_email_panel_with_transition(surf)
 
         elif self.estado == "fin_juego":
             fin_box = pygame.Rect(200, 200, 400, 200)
@@ -1868,16 +2145,143 @@ class Level1Screen(BaseLevelScreen):
                 taunt_text = self.small_font.render(line, True, (255, 180, 180))
                 surf.blit(taunt_text, (hacker_box_rect.x + 15, hacker_box_rect.y + y_offset))
                 y_offset += taunt_text.get_height() + 4
+    
+    # ===== MÉTODOS AUXILIARES PARA EFECTOS VISUALES =====
+    def _draw_scanlines(self, surf):
+        """Dibuja líneas de escaneo CRT más visibles"""
+        scanline_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        line_spacing = 3  # Líneas más juntas para mayor visibilidad
+        for y in range(0, SCREEN_H, line_spacing):
+            # Calcular posición con offset animado
+            line_y = (y + int(self.scanline_offset)) % SCREEN_H
+            # Alpha más alto (60 en lugar de 15) y líneas de 2px de grosor
+            pygame.draw.line(scanline_surf, (0, 0, 0, 60), (0, line_y), (SCREEN_W, line_y), 2)
+        surf.blit(scanline_surf, (0, 0))
+    
+    def _apply_glitch_effect(self, surf):
+        """Aplica efecto glitch intermitente"""
+        glitch_surf = surf.copy()
+        # Desplazamiento horizontal aleatorio
+        offset = random.randint(-5, 5)
+        # Dividir pantalla en franjas y desplazar
+        num_strips = random.randint(3, 6)
+        strip_height = SCREEN_H // num_strips
+        for i in range(num_strips):
+            if random.random() > 0.5:
+                y_pos = i * strip_height
+                strip = glitch_surf.subsurface((0, y_pos, SCREEN_W, min(strip_height, SCREEN_H - y_pos)))
+                surf.blit(strip, (offset, y_pos))
+        # Añadir líneas de ruido
+        for _ in range(3):
+            y = random.randint(0, SCREEN_H)
+            pygame.draw.line(surf, (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)), 
+                           (0, y), (SCREEN_W, y), 2)
+    
+    def _get_animated_color(self, base_color, highlight_color, timer):
+        """Interpola entre color base y color resaltado según el timer"""
+        if timer <= 0:
+            return base_color
+        t = timer / 1000.0  # Normalizar a 0-1
+        # Interpolación lineal
+        r = int(base_color[0] + (highlight_color[0] - base_color[0]) * t)
+        g = int(base_color[1] + (highlight_color[1] - base_color[1]) * t)
+        b = int(base_color[2] + (highlight_color[2] - base_color[2]) * t)
+        return (r, g, b)
+    
+    def _get_pulse_alpha(self, timer):
+        """Calcula alpha pulsante para efecto de parpadeo"""
+        if timer <= 0:
+            return 255
+        # Pulso sinusoidal
+        import math
+        t = timer / 1000.0
+        pulse = abs(math.sin(t * math.pi * 4))  # 4 pulsos por segundo
+        return int(200 + pulse * 55)  # Rango 200-255
+    
+    def _render_email_panel_with_transition(self, surf):
+        """Renderiza el EmailPanel con efecto de transición deslizante"""
+        if self.email_panel_transition < 1.0:
+            # Efecto de deslizamiento desde la derecha
+            import math
+            # Easing suave (ease-out cubic)
+            t = self.email_panel_transition
+            eased_t = 1 - math.pow(1 - t, 3)
+            
+            # Renderizar en superficie temporal
+            temp_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            self.email_panel.render(temp_surf)
+            
+            # Calcular offset de deslizamiento
+            offset_x = int((1 - eased_t) * SCREEN_W)
+            
+            # Dibujar con desplazamiento y fade
+            temp_surf.set_alpha(int(eased_t * 255))
+            surf.blit(temp_surf, (offset_x, 0))
+        else:
+            # Transición completa, renderizar normal
+            self.email_panel.render(surf)
 
 # --------- Clase Protagonista (Visual) ----------
 class ProtagonistaSprite:
     def __init__(self, x, y):
-        self.image = pygame.image.load(get_asset_path("assets/protagonista/idle.png")).convert_alpha()
-        self.image = pygame.transform.scale(self.image, (200, 200))
-        self.rect = self.image.get_rect(center=(x, y))
+        self.frames = []
+        # Cargar frames de idle0.png a idle3.png
+        for i in range(4):
+            frame_path = get_asset_path(f"assets/protagonista/idle{i}.png")
+            try:
+                img = pygame.image.load(frame_path).convert_alpha()
+                img = pygame.transform.scale(img, (200, 200))
+                self.frames.append(img)
+            except Exception:
+                # Fallback si no existe el frame
+                if i == 0:
+                    # Si no existe idle0, usar el idle.png original
+                    try:
+                        img = pygame.image.load(get_asset_path("assets/protagonista/idle.png")).convert_alpha()
+                        img = pygame.transform.scale(img, (200, 200))
+                        self.frames.append(img)
+                    except Exception:
+                        # Crear un placeholder si no hay imagen
+                        placeholder = pygame.Surface((200, 200), pygame.SRCALPHA)
+                        placeholder.fill((0, 200, 0, 128))
+                        self.frames.append(placeholder)
+                else:
+                    # Para frames faltantes, duplicar el último frame válido
+                    if self.frames:
+                        self.frames.append(self.frames[-1])
+        
+        # Si no se cargó ningún frame, crear uno placeholder
+        if not self.frames:
+            placeholder = pygame.Surface((200, 200), pygame.SRCALPHA)
+            placeholder.fill((0, 200, 0, 128))
+            self.frames.append(placeholder)
+        
+        self.rect = self.frames[0].get_rect(center=(x, y))
+        self.frame_index = 0
+        self.animation_timer = 0
+        self.frame_duration = 450  # Mismo que el hacker
+        self.direction = 1  # 1 = hacia adelante, -1 = hacia atrás (ping-pong)
+
+    def update(self, dt):
+        self.animation_timer += dt
+        if self.animation_timer >= self.frame_duration:
+            self.animation_timer = 0
+            # Avanzar frame en la dirección actual
+            self.frame_index += self.direction
+            
+            # Ping-pong: cambiar dirección en los extremos
+            if self.frame_index >= len(self.frames):
+                self.frame_index = len(self.frames) - 2
+                self.direction = -1
+            elif self.frame_index < 0:
+                self.frame_index = 1
+                self.direction = 1
+            
+            # Asegurar que el índice esté en rango válido
+            self.frame_index = max(0, min(self.frame_index, len(self.frames) - 1))
 
     def draw(self, surf):
-        surf.blit(self.image, self.rect)
+        surf.blit(self.frames[self.frame_index], self.rect)
 
 
 # --------- Clase Protagonista (lógica) ----------
@@ -2361,8 +2765,8 @@ class Inbox:
             right_box_w = right_box_h
             right_box_gap = 8
             inner_w = row.w - pad_x * 2 - (right_box_w + right_box_gap)
-            # asunto en color
-            subj_color = (120, 255, 140) if c.es_legitimo else (255, 120, 120)
+            # asunto en color neutro (sin diferenciación)
+            subj_color = (200, 220, 255) if hovered else (180, 200, 230)
             subj = truncate_ellipsis(c.asunto, self.font_row, inner_w)
             surf.blit(self.font_row.render(subj, True, subj_color), (row.x + pad_x, row.y + pad_y))
             # dominio en gris
@@ -3864,6 +4268,12 @@ class ArchivoSistema:
         self.en_cuarentena = False
         self.eliminado = False
         self.rect = None  # Se asignará cuando se coloque en una habitación
+        
+        # NUEVO: Sistema de animaciones (solo visible DESPUÉS de escanear)
+        self.fue_escaneado = False  # Crítico: solo mostrar efectos si fue escaneado
+        self.pulse_timer = 0  # Para efecto de respiración en archivos infectados
+        self.particle_timer = 0  # Timer para generar partículas
+        self.particles = []  # Partículas rojas flotantes (solo si escaneado + infectado)
 
     def _detectar_extension_real(self, nombre, extension_visible):
         """Detecta extensiones dobles o engañosas"""
@@ -3948,6 +4358,64 @@ class GestorVirus:
     def hay_sintomas_activos(self):
         """Verifica si hay algún síntoma activo"""
         return any(self.sintomas_activos.values())
+
+
+# ========== CLASES DE PART\u00cdCULAS Y EFECTOS VISUALES NIVEL 2 ==========
+
+class ThreatParticle:
+    """Part\u00edcula de amenaza que aparece SOLO en archivos escaneados e infectados"""
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.vx = random.uniform(-0.3, 0.3)
+        self.vy = random.uniform(-0.5, -0.1)
+        self.char = random.choice(['!', 'X', '*', '#'])
+        self.alpha = 255
+        self.lifetime = random.randint(1000, 2000)
+        self.age = 0
+        
+    def update(self, dt):
+        self.x += self.vx * dt * 0.05
+        self.y += self.vy * dt * 0.05
+        self.age += dt
+        # Fade out
+        if self.age > self.lifetime * 0.6:
+            fade_progress = (self.age - self.lifetime * 0.6) / (self.lifetime * 0.4)
+            self.alpha = int(255 * (1 - fade_progress))
+        return self.age < self.lifetime  # True si sigue viva
+    
+    def draw(self, surf, font):
+        if self.alpha > 0:
+            text = font.render(self.char, True, (255, 50, 50))
+            text.set_alpha(self.alpha)
+            surf.blit(text, (int(self.x), int(self.y)))
+
+
+class ScanPulse:
+    """Efecto de pulso circular al escanear archivos"""
+    def __init__(self, x, y, color):
+        self.x = x
+        self.y = y
+        self.radius = 5
+        self.max_radius = 60
+        self.color = color
+        self.alpha = 255
+        self.finished = False
+        
+    def update(self, dt):
+        self.radius += dt * 0.15
+        if self.radius > self.max_radius:
+            self.finished = True
+        # Fade basado en radio
+        progress = self.radius / self.max_radius
+        self.alpha = int(255 * (1 - progress))
+        
+    def draw(self, surf):
+        if not self.finished and self.alpha > 0:
+            s = pygame.Surface((self.max_radius * 2, self.max_radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s, (*self.color, self.alpha), 
+                             (self.max_radius, self.max_radius), int(self.radius), 3)
+            surf.blit(s, (int(self.x - self.max_radius), int(self.y - self.max_radius)))
 
 
 # ========== SISTEMA EDUCATIVO NIVEL 2 ==========
@@ -4315,6 +4783,14 @@ class Level2Screen(Screen):
         self.accion_en_progreso = None
         self.tiempo_accion = 0
         self.duracion_escaneo = 3000
+        
+        # NUEVO: Sistema de animaciones visuales para Nivel 2
+        self.threat_particles = []  # Partículas globales de amenaza
+        self.particle_font = pygame.font.Font(None, 12)
+        self.scan_pulse_alpha = 0  # Para efecto de pulso al escanear
+        self.scan_pulse_dir = 1
+        self.recursos_animacion_timer = 0  # Para animar cambios de recursos
+        self.threat_level = 0.0  # 0.0 a 1.0 basado en archivos infectados escaneados
         # Sistema de recursos
         self.recursos = 100
         self.recursos_display = 100.0 # Para animación suave del número
@@ -4809,6 +5285,9 @@ class Level2Screen(Screen):
     def _completar_escaneo_archivo(self):
         """Completa el escaneo individual de un archivo"""
         if self.archivo_seleccionado:
+            # IMPORTANTE: Marcar archivo como escaneado para mostrar efectos visuales
+            self.archivo_seleccionado.fue_escaneado = True
+            
             probabilidad = self.archivo_seleccionado.probabilidad_infeccion
             if self.archivo_seleccionado.es_infectado:
                 mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {probabilidad}% riesgo - {self.archivo_seleccionado.tipo_virus.upper()}"
@@ -5190,8 +5669,29 @@ class Level2Screen(Screen):
         bar_y = SCREEN_H - 120
         # Fondo de la barra
         pygame.draw.rect(surf, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height))
-        # Barra de progreso
-        pygame.draw.rect(surf, (0, 200, 255), (bar_x, bar_y, bar_width * progreso, bar_height))
+        # Barra de progreso con pulso
+        bar_color = (0, 200, 255)
+        pulse_intensity = int(self.scan_pulse_alpha * 0.5)
+        bar_color_pulsed = (
+            min(255, bar_color[0] + pulse_intensity),
+            min(255, bar_color[1] + pulse_intensity),
+            min(255, bar_color[2] + pulse_intensity)
+        )
+        pygame.draw.rect(surf, bar_color_pulsed, (bar_x, bar_y, bar_width * progreso, bar_height))
+        
+        # Efecto de pulso circular si está escaneando archivo
+        if self.accion_en_progreso in ["escanear_archivo", "escanear_carpeta"] and self.archivo_seleccionado:
+            if hasattr(self.archivo_seleccionado, 'rect') and self.archivo_seleccionado.rect:
+                pulse_x = self.archivo_seleccionado.rect.centerx
+                pulse_y = self.archivo_seleccionado.rect.centery
+                pulse_radius = 30 + int(progreso * 20)
+                pulse_alpha = int(100 * (1 - progreso))
+                
+                pulse_surf = pygame.Surface((pulse_radius * 2, pulse_radius * 2), pygame.SRCALPHA)
+                pygame.draw.circle(pulse_surf, (0, 255, 255, pulse_alpha), 
+                                 (pulse_radius, pulse_radius), pulse_radius, 2)
+                surf.blit(pulse_surf, (pulse_x - pulse_radius, pulse_y - pulse_radius))
+        
         # Texto
         accion_text = self.fonts["small"].render(f"{self.accion_en_progreso.upper()}...", True, (255, 255, 255))
         surf.blit(accion_text, (bar_x, bar_y - 25))
@@ -5366,6 +5866,45 @@ class Level2Screen(Screen):
       
         # SISTEMA EDUCATIVO: Actualizar overlay (cooldowns)
         self.overlay_educativo.update(dt)
+      
+        # ========== ANIMACIONES NIVEL 2 ==========
+        # Actualizar temporizador de animación de recursos
+        self.recursos_animacion_timer += dt
+        
+        # Actualizar pulso del scan
+        self.scan_pulse_alpha += self.scan_pulse_dir * dt * 0.3
+        if self.scan_pulse_alpha > 255:
+            self.scan_pulse_alpha = 255
+            self.scan_pulse_dir = -1
+        elif self.scan_pulse_alpha < 0:
+            self.scan_pulse_alpha = 0
+            self.scan_pulse_dir = 1
+        
+        # Actualizar partículas de amenaza globales
+        self.threat_particles = [p for p in self.threat_particles if p.update(dt)]
+        
+        # Actualizar animaciones de archivos ESCANEADOS E INFECTADOS
+        if self.current_directory in self.files_in_room:
+            for archivo in self.files_in_room[self.current_directory]:
+                if archivo.fue_escaneado and archivo.es_infectado:
+                    # Pulso de respiración
+                    archivo.pulse_timer += dt
+                    
+                    # Generar partículas de amenaza
+                    archivo.particle_timer += dt
+                    if archivo.particle_timer > 500:  # Cada 500ms
+                        archivo.particle_timer = 0
+                        if archivo.rect:
+                            # Generar 1-2 partículas desde el archivo
+                            for _ in range(random.randint(1, 2)):
+                                px = archivo.rect.centerx + random.randint(-20, 20)
+                                py = archivo.rect.centery + random.randint(-20, 20)
+                                archivo.particles.append(ThreatParticle(px, py))
+                    
+                    # Actualizar partículas del archivo
+                    archivo.particles = [p for p in archivo.particles if p.update(dt)]
+        
+        # ========== FIN ANIMACIONES NIVEL 2 ==========
       
         # Control de overlay de ransomware oculto temporalmente
         if self.ransomware_overlay_oculto:
@@ -5613,6 +6152,7 @@ class Level2Screen(Screen):
             # Dibujar sombra y texto
             surf.blit(texto_shadow, (texto_x + 1, texto_y + 1))
             surf.blit(texto_recursos, (texto_x, texto_y))
+            
             # Síntomas globales
             self.dibujar_sintomas_globales(surf)
             # Títulos
@@ -5766,18 +6306,28 @@ class Level2Screen(Screen):
                     # Calcular escala: 1.15x en hover solamente (sin efecto de presionado)
                     is_hovered = self.near_file and self.near_file.nombre == archivo.nombre
                     scale = 1.15 if is_hovered else 1.0
+                    
+                    # ========== ANIMACIÓN: Pulso SOLO si fue escaneado e infectado ==========
+                    if archivo.fue_escaneado and archivo.es_infectado:
+                        # Efecto de respiración basado en sine wave
+                        pulse_factor = math.sin(archivo.pulse_timer * 0.003) * 0.1 + 1.0
+                        scale *= pulse_factor
+                    
                     # Color según estado (para borde o fallback)
                     if archivo.en_cuarentena:
                         color = (255, 165, 0)
-                    elif archivo.es_infectado:
+                    elif archivo.fue_escaneado and archivo.es_infectado:
+                        # Solo mostrar rojo si fue escaneado Y es infectado
                         color = (255, 0, 0)
                     elif archivo.es_sospechoso():
                         color = (255, 255, 0)
                     else:
                         color = (200, 200, 200)
+                    
                     # Resaltar si está seleccionado con borde blanco
                     if self.archivo_seleccionado and self.archivo_seleccionado.nombre == archivo.nombre:
                         pygame.draw.rect(surf, (255, 255, 255), file_rect.inflate(6, 6), 2, border_radius=4)
+                    
                     # Intentar dibujar imagen personalizada del archivo con escala
                     if archivo.image_path:
                         pad = 2
@@ -5788,8 +6338,23 @@ class Level2Screen(Screen):
                             # Dibujar imagen sin tinting para mantener colores originales
                             dst = img.get_rect(center=file_rect.center)
                             surf.blit(img, dst)
+                            
+                            # ========== EFECTOS VISUALES SOLO PARA ARCHIVOS ESCANEADOS E INFECTADOS ==========
+                            if archivo.fue_escaneado and archivo.es_infectado:
+                                # Borde rojo pulsante
+                                scaled_rect = pygame.Rect(0, 0, int(file_rect.w * scale), int(file_rect.h * scale))
+                                scaled_rect.center = file_rect.center
+                                border_alpha = int(150 + math.sin(archivo.pulse_timer * 0.005) * 100)
+                                border_surf = pygame.Surface((scaled_rect.w + 6, scaled_rect.h + 6), pygame.SRCALPHA)
+                                pygame.draw.rect(border_surf, (*color, border_alpha), border_surf.get_rect(), 3, border_radius=3)
+                                surf.blit(border_surf, (scaled_rect.x - 3, scaled_rect.y - 3))
+                                
+                                # Dibujar partículas de amenaza
+                                for particle in archivo.particles:
+                                    particle.draw(surf, self.particle_font)
+                            
                             # Indicar estado con un borde de color en lugar de tinting
-                            if archivo.en_cuarentena or archivo.es_infectado or archivo.es_sospechoso():
+                            elif archivo.en_cuarentena or archivo.es_sospechoso():
                                 scaled_rect = pygame.Rect(0, 0, int(file_rect.w * scale), int(file_rect.h * scale))
                                 scaled_rect.center = file_rect.center
                                 pygame.draw.rect(surf, color, scaled_rect, 2, border_radius=3)
@@ -6113,6 +6678,13 @@ class Game:
         }
         # NUEVO: Bandera para controlar si el quiz inicial ya fue completado
         self.quiz_inicial_completado = False
+        
+        # NUEVO: Sistema de ajustes del juego
+        self.settings = {
+            "show_fps": True,
+            "fullscreen": False
+        }
+        
         # Ruta a la fuente TTF del proyecto (archivo 'texto.ttf' en la raíz del proyecto)
         self.font_path = os.path.join(script_dir, "texto.ttf")
         try:
@@ -6179,10 +6751,11 @@ class Game:
                     if t >= 1.0:
                         self._fade_phase = None
 
-            # Mostrar FPS en esquina superior derecha
-            fps_text = self.font.render(f"FPS: {int(self.clock.get_fps())}", True, (255, 255, 0))
-            fps_x = SCREEN_W - fps_text.get_width() - 10
-            self.screen.blit(fps_text, (fps_x, 10))
+            # Mostrar FPS en esquina superior derecha (solo si está habilitado)
+            if self.settings.get("show_fps", True):
+                fps_text = self.font.render(f"FPS: {int(self.clock.get_fps())}", True, (255, 255, 0))
+                fps_x = SCREEN_W - fps_text.get_width() - 10
+                self.screen.blit(fps_text, (fps_x, 10))
 
             pygame.display.flip()
 
