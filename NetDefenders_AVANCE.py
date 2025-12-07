@@ -1,5 +1,5 @@
 import math
-import pygame, sys, random
+import pygame, sys, random, time
 import numpy as np
 from abc import ABC, abstractmethod
 from moviepy import VideoFileClip
@@ -756,6 +756,352 @@ class FinalQuizSummaryScreen(Screen):
             surf.blit(txt, (SCREEN_W//2 - txt.get_width()//2, y_offset))
             y_offset += 35
 
+# --------- (NUEVA) Pantalla de Reporte Post-Mortem Nivel 1 ----------
+class Level1PostMortemScreen(Screen):
+    """Reporte educativo detallado al finalizar el Nivel 1"""
+    def __init__(self, game, level1_data):
+        super().__init__(game)
+        self.level1_data = level1_data  # Diccionario con estadísticas del nivel
+        
+        try:
+            self.title_font = pygame.font.Font(self.game.font_path, 44)
+            self.section_font = pygame.font.Font(self.game.font_path, 28)
+            self.body_font = pygame.font.Font(self.game.font_path, 20)
+            self.small_font = pygame.font.Font(self.game.font_path, 18)
+        except Exception:
+            self.title_font = pygame.font.SysFont("Consolas", 36, bold=True)
+            self.section_font = pygame.font.SysFont("Consolas", 24, bold=True)
+            self.body_font = pygame.font.SysFont("Consolas", 18)
+            self.small_font = pygame.font.SysFont("Consolas", 16)
+        
+        self.bg_color = (15, 15, 35)
+        self.scroll_offset = 0
+        self.max_scroll = 0
+        
+        # Calcular contenido
+        self.content_lines = self._generate_report()
+        
+    def _generate_report(self):
+        """Genera el reporte completo línea por línea"""
+        lines = []
+        data = self.level1_data
+        
+        # 1. TÍTULO
+        lines.append(("REPORTE DE MISIÓN - NIVEL 1", "title", (0, 255, 200)))
+        lines.append(("Análisis de Amenazas de Correo Electrónico", "subtitle", (150, 200, 255)))
+        lines.append(("", "space", None))
+        
+        # 2. RESUMEN EJECUTIVO
+        lines.append(("--- RESUMEN EJECUTIVO ---", "section", (255, 215, 0)))
+        lines.append(("", "space", None))
+        
+        total_emails = data['total_correos']
+        correctos = data['correctos']
+        incorrectos = data['incorrectos']
+        porcentaje = (correctos / total_emails * 100) if total_emails > 0 else 0
+        
+        lines.append((f"Total de correos analizados: {total_emails}", "body", (200, 200, 200)))
+        lines.append((f"Respuestas correctas: {correctos} ({porcentaje:.1f}%)", "body", 
+                     (100, 255, 100) if porcentaje >= 70 else (255, 200, 100) if porcentaje >= 50 else (255, 100, 100)))
+        lines.append((f"Respuestas incorrectas: {incorrectos}", "body", (255, 150, 150)))
+        lines.append(("", "space", None))
+        
+        resultado_final = "VICTORIA" if data['victoria'] else "DERROTA"
+        color_resultado = (100, 255, 100) if data['victoria'] else (255, 100, 100)
+        lines.append((f"Resultado: {resultado_final}", "body", color_resultado))
+        lines.append((f"Integridad de Red Final: {data['vida_final']}/100", "body", (150, 200, 255)))
+        lines.append(("", "space", None))
+        
+        # 3. ANÁLISIS DE AMENAZAS
+        lines.append(("--- ANALISIS DE AMENAZAS ---", "section", (255, 100, 100)))
+        lines.append(("", "space", None))
+        
+        amenazas_detectadas = data['amenazas_detectadas']
+        amenazas_totales = data['amenazas_totales']
+        amenazas_perdidas = amenazas_totales - amenazas_detectadas
+        
+        lines.append((f"Amenazas detectadas: {amenazas_detectadas}/{amenazas_totales}", "body", (100, 255, 100)))
+        if amenazas_perdidas > 0:
+            lines.append((f"Amenazas no detectadas: {amenazas_perdidas}", "body", (255, 150, 0)))
+        
+        # Señales de phishing detectadas
+        if data['señales_detectadas']:
+            lines.append(("", "space", None))
+            lines.append(("Señales de phishing identificadas:", "body", (200, 200, 200)))
+            for señal in data['señales_detectadas']:
+                lines.append((f"  + {señal}", "body", (150, 255, 150)))
+        
+        lines.append(("", "space", None))
+        
+        # 4. CORREOS LEGITIMOS
+        lines.append(("--- CORREOS LEGITIMOS ---", "section", (100, 200, 255)))
+        lines.append(("", "space", None))
+        
+        legitimos_correctos = data['legitimos_correctos']
+        legitimos_totales = data['legitimos_totales']
+        falsos_positivos = data['falsos_positivos']
+        
+        lines.append((f"Correos legítimos procesados correctamente: {legitimos_correctos}/{legitimos_totales}", "body", (100, 255, 100)))
+        if falsos_positivos > 0:
+            lines.append((f"Falsos positivos (legítimos marcados como phishing): {falsos_positivos}", "body", (255, 150, 0)))
+        
+        lines.append(("", "space", None))
+        
+        # 5. EFICIENCIA OPERACIONAL
+        lines.append(("--- EFICIENCIA OPERACIONAL ---", "section", (200, 150, 255)))
+        lines.append(("", "space", None))
+        
+        tiempo_total = data.get('tiempo_total', 0)
+        tiempo_promedio = (tiempo_total / total_emails) if total_emails > 0 else 0
+        
+        lines.append((f"Tiempo total de misión: {tiempo_total:.1f} segundos", "body", (200, 200, 200)))
+        lines.append((f"Tiempo promedio por correo: {tiempo_promedio:.1f} segundos", "body", (200, 200, 200)))
+        
+        # Calificar velocidad
+        if tiempo_promedio < 20:
+            velocidad_eval = "Excelente - Análisis rápido y eficiente"
+            velocidad_color = (100, 255, 100)
+        elif tiempo_promedio < 35:
+            velocidad_eval = "Bueno - Velocidad adecuada"
+            velocidad_color = (200, 255, 100)
+        else:
+            velocidad_eval = "Lento - Considera ser más decisivo"
+            velocidad_color = (255, 200, 100)
+        
+        lines.append((f"Evaluación: {velocidad_eval}", "body", velocidad_color))
+        lines.append(("", "space", None))
+        
+        busquedas_web = data.get('busquedas_web', 0)
+        lines.append((f"Herramienta 'Buscar en Web' utilizada: {busquedas_web} veces", "body", (200, 200, 200)))
+        
+        if busquedas_web == 0:
+            lines.append(("  Consejo: Usa 'Buscar en Web' para verificar dominios sospechosos", "body", (255, 200, 100)))
+        elif busquedas_web > total_emails * 2:
+            lines.append(("  Nota: Exceso de búsquedas puede ralentizar el análisis", "body", (255, 200, 100)))
+        else:
+            lines.append(("  Uso eficiente de herramientas de verificación", "body", (100, 255, 100)))
+        
+        lines.append(("", "space", None))
+        
+        # 6. RECOMENDACIONES PERSONALIZADAS
+        lines.append(("--- COMO MEJORAR ---", "section", (255, 215, 0)))
+        lines.append(("", "space", None))
+        
+        recomendaciones = self._generate_recommendations(data)
+        for i, rec in enumerate(recomendaciones, 1):
+            lines.append((f"{i}. {rec}", "body", (255, 255, 150)))
+            lines.append(("", "space", None))
+        
+        # 7. INSIGNIAS Y LOGROS
+        lines.append(("--- INSIGNIAS OBTENIDAS ---", "section", (255, 215, 0)))
+        lines.append(("", "space", None))
+        
+        insignias = self._calculate_badges(data)
+        if insignias:
+            for insignia in insignias:
+                lines.append((f"* {insignia}", "body", (255, 215, 0)))
+        else:
+            lines.append(("Sin insignias esta vez. Sigue mejorando!", "body", (200, 200, 200)))
+        
+        lines.append(("", "space", None))
+        lines.append(("", "space", None))
+        lines.append(("Presiona cualquier tecla o haz clic para continuar", "small", (150, 150, 150)))
+        
+        return lines
+    
+    def _generate_recommendations(self, data):
+        """Genera 3 recomendaciones personalizadas basadas en el desempeño"""
+        recomendaciones = []
+        
+        # Recomendación 1: Basada en amenazas perdidas
+        if data['amenazas_detectadas'] < data['amenazas_totales']:
+            amenazas_perdidas = data['amenazas_totales'] - data['amenazas_detectadas']
+            if amenazas_perdidas >= 2:
+                recomendaciones.append(
+                    "PRIORIDAD ALTA: Revisa SIEMPRE el dominio del remitente. "
+                    "Los atacantes suelen usar dominios similares al original "
+                    "(ej: 'microsoft-support@outlook.com' en lugar de '@microsoft.com')"
+                )
+            else:
+                recomendaciones.append(
+                    "Mejora la detección de señales sutiles: Busca urgencia artificial, "
+                    "errores gramaticales y solicitudes inusuales en el texto del mensaje"
+                )
+        else:
+            recomendaciones.append(
+                "¡Excelente detección de amenazas! Mantén esa atención al detalle "
+                "y sigue verificando los tres elementos: dominio, texto y logo"
+            )
+        
+        # Recomendación 2: Basada en falsos positivos
+        if data['falsos_positivos'] > 0:
+            recomendaciones.append(
+                "Reduce falsos positivos: No todos los correos de dominios externos son maliciosos. "
+                "Verifica si el dominio es oficial (ej: linkedin.com es legítimo) "
+                "y si el mensaje tiene sentido en contexto laboral"
+            )
+        elif data['legitimos_correctos'] == data['legitimos_totales']:
+            recomendaciones.append(
+                "¡Perfecto reconocimiento de correos legítimos! Sabes distinguir "
+                "entre comunicaciones genuinas y amenazas potenciales"
+            )
+        else:
+            recomendaciones.append(
+                "Analiza el contexto completo: Un correo interno de RH o IT con dominio "
+                "corporativo correcto (@synergy-corp.com) suele ser legítimo"
+            )
+        
+        # Recomendación 3: Basada en eficiencia
+        tiempo_promedio = (data.get('tiempo_total', 0) / data['total_correos']) if data['total_correos'] > 0 else 0
+        busquedas = data.get('busquedas_web', 0)
+        
+        if tiempo_promedio > 40:
+            recomendaciones.append(
+                "Mejora tu velocidad de respuesta: En un entorno real, los minutos cuentan. "
+                "Practica identificar señales clave rápidamente: dominio, urgencia, y solicitudes extrañas"
+            )
+        elif busquedas == 0 and data['amenazas_detectadas'] < data['amenazas_totales']:
+            recomendaciones.append(
+                "Utiliza las herramientas disponibles: 'Buscar en Web' te ayuda a verificar "
+                "dominios, logos y enlaces sospechosos. No dudes en usarla ante cualquier duda"
+            )
+        elif busquedas > data['total_correos'] * 2:
+            recomendaciones.append(
+                "Optimiza el uso de herramientas: Confía más en tu criterio para correos obvios. "
+                "Reserva las búsquedas web para casos realmente ambiguos"
+            )
+        else:
+            recomendaciones.append(
+                "Excelente balance entre velocidad y precisión. Continúa confiando "
+                "en tu análisis mientras mantienes la verificación de casos dudosos"
+            )
+        
+        return recomendaciones[:3]  # Máximo 3 recomendaciones
+    
+    def _calculate_badges(self, data):
+        """Calcula insignias obtenidas según el desempeño"""
+        insignias = []
+        
+        porcentaje_aciertos = (data['correctos'] / data['total_correos'] * 100) if data['total_correos'] > 0 else 0
+        
+        # Insignia de perfección
+        if data['correctos'] == data['total_correos']:
+            insignias.append("ANALISTA PERFECTO - Sin errores en toda la misión")
+        
+        # Insignia de detección
+        if data['amenazas_detectadas'] == data['amenazas_totales'] and data['amenazas_totales'] > 0:
+            insignias.append("CAZADOR DE AMENAZAS - Todas las amenazas detectadas")
+        
+        # Insignia de precisión
+        if data['falsos_positivos'] == 0 and data['total_correos'] >= 6:
+            insignias.append("OJO CLÍNICO - Sin falsos positivos")
+        
+        # Insignia de velocidad
+        tiempo_promedio = (data.get('tiempo_total', 0) / data['total_correos']) if data['total_correos'] > 0 else 0
+        if tiempo_promedio < 20 and porcentaje_aciertos >= 70:
+            insignias.append("ANALISTA RÁPIDO - Alta velocidad con precisión")
+        
+        # Insignia de victoria
+        if data['victoria']:
+            insignias.append("DEFENSOR DE LA RED - Misión completada con éxito")
+        
+        return insignias
+    
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN or (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1):
+            # Ir al menú principal o siguiente nivel
+            self.game.change_screen(LevelSelectScreen(self.game))
+        
+        # Scroll con rueda del mouse
+        if event.type == pygame.MOUSEWHEEL:
+            scroll_speed = 30
+            self.scroll_offset = max(0, min(self.max_scroll, self.scroll_offset - event.y * scroll_speed))
+    
+    def update(self, dt):
+        pass
+    
+    def _wrap_text(self, text, font, max_width):
+        """Envuelve texto largo en múltiples líneas"""
+        words = text.split(' ')
+        lines = []
+        current_line = ""
+        
+        for word in words:
+            test_line = current_line + (" " if current_line else "") + word
+            if font.size(test_line)[0] <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+        
+        if current_line:
+            lines.append(current_line)
+        
+        return lines if lines else [text]
+    
+    def render(self, surf):
+        surf.fill(self.bg_color)
+        
+        # Calcular altura total del contenido
+        y_pos = 30 - self.scroll_offset
+        total_height = 30
+        max_text_width = SCREEN_W - 60  # Margen de 30px a cada lado
+        
+        for line_text, line_type, color in self.content_lines:
+            if line_type == "title":
+                font = self.title_font
+            elif line_type == "section":
+                font = self.section_font
+            elif line_type == "subtitle":
+                font = self.section_font
+            elif line_type == "small":
+                font = self.small_font
+            elif line_type == "space":
+                total_height += 15
+                continue
+            else:  # body
+                font = self.body_font
+            
+            if color:
+                # Envolver texto si es muy largo
+                if font.size(line_text)[0] > max_text_width:
+                    wrapped_lines = self._wrap_text(line_text, font, max_text_width)
+                    for wrapped_line in wrapped_lines:
+                        text_surf = font.render(wrapped_line, True, color)
+                        if y_pos > -50 and y_pos < SCREEN_H:  # Solo renderizar si es visible
+                            surf.blit(text_surf, (30, y_pos))  # Alineado a la izquierda con margen
+                        y_pos += text_surf.get_height() + 5
+                        total_height += text_surf.get_height() + 5
+                else:
+                    text_surf = font.render(line_text, True, color)
+                    if y_pos > -50 and y_pos < SCREEN_H:  # Solo renderizar si es visible
+                        # Centrar títulos y secciones, alinear a izquierda el resto
+                        if line_type in ["title", "section", "subtitle"]:
+                            x_pos = SCREEN_W // 2 - text_surf.get_width() // 2
+                        else:
+                            x_pos = 30
+                        surf.blit(text_surf, (x_pos, y_pos))
+                    y_pos += text_surf.get_height() + 8
+                    total_height += text_surf.get_height() + 8
+        
+        # Calcular scroll máximo
+        self.max_scroll = max(0, total_height - SCREEN_H + 50)
+        
+        # Dibujar scrollbar si es necesario
+        if self.max_scroll > 0:
+            scrollbar_x = SCREEN_W - 20
+            scrollbar_h = SCREEN_H - 40
+            scrollbar_y = 20
+            
+            # Fondo de scrollbar
+            pygame.draw.rect(surf, (50, 50, 70), (scrollbar_x, scrollbar_y, 15, scrollbar_h), border_radius=7)
+            
+            # Handle de scrollbar
+            handle_height = max(30, int((SCREEN_H / total_height) * scrollbar_h))
+            handle_y = scrollbar_y + int((self.scroll_offset / self.max_scroll) * (scrollbar_h - handle_height))
+            pygame.draw.rect(surf, (100, 150, 200), (scrollbar_x, handle_y, 15, handle_height), border_radius=7)
+
 # --------- (NUEVA) BaseLevelScreen con elementos esenciales ----------
 class BaseLevelScreen(Screen):
     def __init__(self, game, narrative_lines):
@@ -1460,9 +1806,9 @@ class Level1Screen(BaseLevelScreen):
         self.burla_hacker_timer = 0
         self.lista_burlas = [
             "Clic! Gracias por las llaves del reino.",
-            "Jaja, paranoico? Estas bloqueando a tus companeros.",
-            "Demasiado facil. Tu 'firewall' mental tiene agujeros.",
-            "Ups! Eso dolio?",
+            "Jaja, paranóico? Estas bloqueando a tus compañeros.",
+            "Demasiado fácil. Tu 'firewall' mental tiene agujeros.",
+            "Ups! Eso dolió?",
             "Sigue intentando, 'genio'."
         ]
 
@@ -1523,6 +1869,13 @@ class Level1Screen(BaseLevelScreen):
         self.tutor_max_scroll = 0
         self.tutor_scrollbar_dragging = False
         self.tutor_scrollbar_rect = pygame.Rect(0, 0, 10, 0)  # Se actualizará en render
+        
+        # NUEVO: Tracking de tiempo y herramientas para post-mortem
+        self.nivel_start_time = time.time()  # Tiempo de inicio del nivel
+        self.correo_start_time = None  # Tiempo de inicio del correo actual
+        self.total_tiempo_correos = 0  # Tiempo total acumulado analizando correos
+        self.busquedas_web_realizadas = 0  # Contador de búsquedas web
+        self.señales_detectadas_lista = []  # Lista de señales específicas detectadas
 
     def _player_won(self):
         # Ganó si el hacker llegó a 0 o si al finalizar tiene más vida
@@ -1532,6 +1885,10 @@ class Level1Screen(BaseLevelScreen):
             return False
         # En empate o fin por correos, gana si tiene más vida
         return self.protagonista.vida > self.hacker_logic.vida
+    
+    def _on_web_search_used(self):
+        """Callback llamado cuando se usa la herramienta de búsqueda web"""
+        self.busquedas_web_realizadas += 1
 
     def cargar_correos(self):
         # --- PAQUETE DE CORREOS MEJORADO Y EXTENDIDO ---
@@ -1673,6 +2030,10 @@ class Level1Screen(BaseLevelScreen):
     def procesar_respuesta_completa(self, accion, razones_seleccionadas=None):
         correo = self.correo_abierto
         resultado = self.procesar_accion_correo(accion, correo)
+        
+        # NUEVO: Guardar razones marcadas en el correo para tracking
+        if razones_seleccionadas is not None:
+            correo.razones_marcadas = razones_seleccionadas
         
         hubo_error_accion = False
 
@@ -1961,12 +2322,12 @@ class Level1Screen(BaseLevelScreen):
                 mensaje.append("\n>> BIEN HECHO! Detectaste el ataque del hacker.")
                 mensaje.append("\nPor que es phishing:")
                 mensaje.append("- Dominio: Direccion IP '192.168.1.10' como remitente (muy sospechoso)")
-                mensaje.append("- Texto: Amenazas, tono intimidante, intento de manipulacion psicologica")
+                mensaje.append("- Texto: Amenazas, tono intimidante, intento de manipulación psicológica")
                 mensaje.append("- Contenido: Intenta sembrar duda sobre correos anteriores")
                 mensaje.append("- Sin logo, sin firma profesional")
                 mensaje.append("\nTACTICA: El atacante intenta hacerte dudar de tu criterio")
                 mensaje.append("y crear paranoia para que cometas errores en correos futuros.")
-                mensaje.append("\nNo te dejes intimidar. Confía en tu analisis tecnico.")
+                mensaje.append("\nNo te dejes intimidar. Confía en tu análisis técnico.")
                 if razones_seleccionadas:
                     razones_correctas_set = set(correo.razones_correctas)
                     razones_seleccionadas_set = set(razones_seleccionadas)
@@ -1979,14 +2340,14 @@ class Level1Screen(BaseLevelScreen):
                             mensaje.append(f"\n[!] Te falto notar: {', '.join(faltantes)}")
             else:
                 mensaje.append("[ALERTA: ATAQUE DIRIGIDO - SPEAR PHISHING]")
-                mensaje.append("\n>> ERROR! Caiste en la trampa psicologica del hacker.")
+                mensaje.append("\n>> ERROR! Caiste en la trampa psicológica del hacker.")
                 mensaje.append("\nPor que esto era phishing:")
-                mensaje.append("- Direccion IP como remitente (192.168.1.10) es altamente sospechosa")
+                mensaje.append("- Dirección IP como remitente (192.168.1.10) es altamente sospechosa")
                 mensaje.append("- Contenido amenazante e intimidante")
-                mensaje.append("- Intento de manipulacion psicologica para hacerte dudar")
-                mensaje.append("- Ningun remitente legitimo usaria este tono")
-                mensaje.append("\nTACTICA: El atacante queria confundirte y sembrar paranoia")
-                mensaje.append("para que cometieras errores en analisis futuros.")
+                mensaje.append("- Intento de manipulación psicológica para hacerte dudar")
+                mensaje.append("- Ningun remitente legítimo usaría este tono")
+                mensaje.append("\nTÁCTICA: El atacante quería confundirte y sembrar paranoia")
+                mensaje.append("para que cometieras errores en análisis futuros.")
                 mensaje.append("\nCONSECUENCIA: Responder o interactuar expone tu posicion.")
                 mensaje.append("Perdiste 20-30 puntos de integridad.")
         
@@ -2062,6 +2423,12 @@ class Level1Screen(BaseLevelScreen):
         self.siguiente_correo()
 
     def siguiente_correo(self):
+        # NUEVO: Acumular tiempo del correo actual si existe
+        if self.correo_start_time is not None:
+            tiempo_correo = time.time() - self.correo_start_time
+            self.total_tiempo_correos += tiempo_correo
+            self.correo_start_time = None
+        
         self.correo_abierto = None
         self.estado = "esperando_correo"
         self.razones_seleccionadas = []
@@ -2069,9 +2436,52 @@ class Level1Screen(BaseLevelScreen):
         # Verificar si quedan correos por procesar
         correos_pendientes = [c for c in self.correos if not c.procesado]
         if not correos_pendientes or self.protagonista.vida <= 0 or self.hacker_logic.vida <= 0:
-            self.estado = "fin_juego"
             # NUEVO: Completar nivel y guardar estadísticas
             self.game.player_stats.complete_level()
+            
+            # NUEVO: Preparar datos para post-mortem
+            victoria = self._player_won()
+            stats = self.game.player_stats.session_stats
+            
+            # Calcular señales detectadas
+            señales_detectadas = []
+            for correo in self.correos:
+                if not correo.es_legitimo and correo.procesado:
+                    # Revisar qué razones fueron marcadas correctamente
+                    if hasattr(correo, 'razones_marcadas'):
+                        for razon in correo.razones_marcadas:
+                            if razon.lower() in [r.lower() for r in correo.razones_correctas]:
+                                if razon == "Logo":
+                                    señales_detectadas.append("Logo corporativo falso o ausente")
+                                elif razon == "Dominio":
+                                    señales_detectadas.append(f"Dominio sospechoso: {correo.remitente.split('@')[1] if '@' in correo.remitente else correo.remitente}")
+                                elif razon == "Texto":
+                                    señales_detectadas.append("Lenguaje urgente o solicitudes inusuales")
+            
+            # Calcular totales
+            total_amenazas = sum(1 for c in self.correos if not c.es_legitimo)
+            total_legitimos = sum(1 for c in self.correos if c.es_legitimo)
+            legitimos_correctos = total_legitimos - stats.get('false_positives', 0)
+            
+            level1_data = {
+                'total_correos': stats.get('emails_analyzed', len(self.correos)),
+                'correctos': stats.get('emails_analyzed', 0) - (stats.get('threats_missed', 0) + stats.get('false_positives', 0)),
+                'incorrectos': stats.get('threats_missed', 0) + stats.get('false_positives', 0),
+                'amenazas_detectadas': stats.get('threats_detected', 0),
+                'amenazas_totales': total_amenazas,
+                'legitimos_correctos': legitimos_correctos,
+                'legitimos_totales': total_legitimos,
+                'falsos_positivos': stats.get('false_positives', 0),
+                'tiempo_total': self.total_tiempo_correos,
+                'busquedas_web': self.busquedas_web_realizadas,
+                'señales_detectadas': list(set(señales_detectadas)),  # Eliminar duplicados
+                'victoria': victoria,
+                'vida_final': self.protagonista.vida
+            }
+            
+            # NUEVO: Ir a pantalla de post-mortem en lugar de simple fin_juego
+            self.game.change_screen(Level1PostMortemScreen(self.game, level1_data))
+            return
 
     def iniciar_texto_animado(self, texto):
         self.texto_completo = texto
@@ -2255,8 +2665,16 @@ class Level1Screen(BaseLevelScreen):
             if seleccionado:
                 self.correo_abierto = seleccionado
                 self.estado = "correo_abierto"
-                # Crear panel con botones de imagen
-                self.email_panel = EmailPanel(self.correo_abierto, self.small_font, self.option_font, self._get_hacker_rect)
+                # NUEVO: Iniciar timer del correo
+                self.correo_start_time = time.time()
+                # Crear panel con botones de imagen y callback para búsquedas web
+                self.email_panel = EmailPanel(
+                    self.correo_abierto, 
+                    self.small_font, 
+                    self.option_font, 
+                    self._get_hacker_rect,
+                    on_web_search=lambda: self._on_web_search_used()
+                )
 
         elif self.estado == "correo_abierto":
             # Delegar al EmailPanel OO
@@ -3278,11 +3696,12 @@ class Inbox:
 
 class EmailPanel:
     """Panel del correo abierto, con barra de scroll y botones de imagen."""
-    def __init__(self, correo, font_text, font_buttons, hacker_rect_provider=None):
+    def __init__(self, correo, font_text, font_buttons, hacker_rect_provider=None, on_web_search=None):
         self.correo = correo
         self.font_text = font_text
         self.font_buttons = font_buttons
         self._hacker_rect_provider = hacker_rect_provider
+        self.on_web_search = on_web_search  # NUEVO: callback para registrar búsquedas web
         self.rect = pygame.Rect(150, 100, 500, 350)
         # Tamaño del logo mostrado dentro del correo (no afecta iconos del inbox)
         # Volver al slot original para mantener el layout.
@@ -3452,6 +3871,9 @@ class EmailPanel:
             self._generar_resultados_logo()
             self.mode = "search_results"
             self.search_step = 0
+            # NUEVO: Notificar búsqueda web realizada
+            if self.on_web_search:
+                self.on_web_search()
             return True
         
         # Detectar si clickó en el dominio del remitente
@@ -3460,6 +3882,9 @@ class EmailPanel:
             self._generar_resultados_dominio()
             self.mode = "search_results"
             self.search_step = 0
+            # NUEVO: Notificar búsqueda web realizada
+            if self.on_web_search:
+                self.on_web_search()
             return True
         
         # Detectar si clickó en algún texto clickeable
@@ -3478,6 +3903,9 @@ class EmailPanel:
                     self._generar_resultados_enlace(texto_linea)
                     self.mode = "search_results"
                     self.search_step = 0
+                    # NUEVO: Notificar búsqueda web realizada
+                    if self.on_web_search:
+                        self.on_web_search()
                     return True
                 
                 # Fallback para formato antiguo: detectar por contenido de texto
@@ -3488,6 +3916,9 @@ class EmailPanel:
                     self._generar_resultados_enlace(texto_linea)
                     self.mode = "search_results"
                     self.search_step = 0
+                    # NUEVO: Notificar búsqueda web realizada
+                    if self.on_web_search:
+                        self.on_web_search()
                     return True
                 
                 # Enlaces genéricos (http o portal) - pero NO para correo de IT
@@ -3497,6 +3928,9 @@ class EmailPanel:
                     self._generar_resultados_enlace(texto_linea)
                     self.mode = "search_results"
                     self.search_step = 0
+                    # NUEVO: Notificar búsqueda web realizada
+                    if self.on_web_search:
+                        self.on_web_search()
                     return True
         
         # No se encontró nada clickeable
@@ -7155,7 +7589,7 @@ class Game:
         # Estado de desbloqueo de niveles (memoria de sesión)
         self.unlocked_levels = {
             "Nivel 1": True,
-            "Nivel 2": True,
+            "Nivel 2": False,
         }
         # NUEVO: Bandera para controlar si el quiz inicial ya fue completado
         self.quiz_inicial_completado = False
