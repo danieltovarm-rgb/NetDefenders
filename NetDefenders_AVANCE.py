@@ -6193,6 +6193,10 @@ class Level2Screen(Screen):
     def _completar_inspeccion(self):
         """Completa la acción de inspeccionar un archivo - Solo muestra metadatos básicos"""
         if self.archivo_seleccionado:
+            # NUEVO: Añadir puntos pequeños por inspeccionar
+            score_mgr = self.game.player_stats.get_current_score_manager()
+            score_mgr.add_points(10, with_combo=False)  # Puntos pequeños sin combo
+            
             # Solo mostrar metadatos genéricos, NO revelar si es virus
             mensaje = f"INSPECCIÓN: {self.archivo_seleccionado.nombre}\n"
             mensaje += f"Extensión: {self.archivo_seleccionado.extension}\n"
@@ -6209,6 +6213,10 @@ class Level2Screen(Screen):
             
             probabilidad = self.archivo_seleccionado.probabilidad_infeccion
             if self.archivo_seleccionado.es_infectado:
+                # NUEVO: Añadir puntos por detectar amenaza
+                score_mgr = self.game.player_stats.get_current_score_manager()
+                score_mgr.add_points(25, with_combo=True)  # Puntos por detectar amenaza
+                
                 mensaje = f"ESCANEO: {self.archivo_seleccionado.nombre} - {probabilidad}% riesgo - {self.archivo_seleccionado.tipo_virus.upper()}"
                 self.show_message(mensaje)
               
@@ -6220,6 +6228,8 @@ class Level2Screen(Screen):
     def _completar_escaneo_carpeta(self):
         """Completa el escaneo de la carpeta actual"""
         archivos_riesgo = []
+        amenazas_detectadas = 0
+        
         # Escanear subcarpetas
         if self.current_directory in self.directory_structure:
             for subdir in self.directory_structure[self.current_directory]:
@@ -6232,9 +6242,18 @@ class Level2Screen(Screen):
                 if not archivo.eliminado and not archivo.en_cuarentena:
                     if archivo.es_infectado:
                         riesgo = archivo.probabilidad_infeccion
+                        amenazas_detectadas += 1
                     else:
                         riesgo = random.randint(0, 20)
                     archivos_riesgo.append((archivo.nombre, riesgo))
+        
+        # NUEVO: Añadir puntos por escanear carpeta (más si hay amenazas)
+        score_mgr = self.game.player_stats.get_current_score_manager()
+        if amenazas_detectadas > 0:
+            score_mgr.add_points(40 + (amenazas_detectadas * 10), with_combo=True)
+        else:
+            score_mgr.add_points(20, with_combo=True)  # Puntos base por escanear
+        
         mensaje = "ESCANEO CARPETA:\n"
         for nombre, riesgo in archivos_riesgo[:6]: # Mostrar máximo 6 elementos
             estado = "ALTO RIESGO" if riesgo > 50 else "BAJO RIESGO"
@@ -6258,6 +6277,10 @@ class Level2Screen(Screen):
                 # +4 recursos
                 self.recursos += 4
                 self.level2_manager.resource_bar.restore(4)
+                
+                # NUEVO: Añadir puntos por responder correctamente
+                score_mgr = self.game.player_stats.get_current_score_manager()
+                score_mgr.add_points(50, with_combo=True)  # Bonus por quiz correcto
               
                 bullets = [
                     f"Correcto: {quiz_data['opciones'][correcta]}",
@@ -6404,6 +6427,10 @@ class Level2Screen(Screen):
                 self.show_message(f"CUARENTENA: {self.archivo_seleccionado.nombre} - Virus aislado")
                 # Programar desactivación de síntoma
                 pygame.time.set_timer(pygame.USEREVENT + 1, 20000)
+                
+                # NUEVO: Añadir puntos por cuarentena correcta
+                score_mgr = self.game.player_stats.get_current_score_manager()
+                score_mgr.add_points(75, with_combo=True)  # Puntos por cuarentena correcta
               
                 # SISTEMA EDUCATIVO: No mostrar refuerzo aquí (se mostrará cuando se apague el síntoma)
             else:
@@ -6427,6 +6454,11 @@ class Level2Screen(Screen):
                 self.mistakes_made += 1
                 # INTEGRACIÓN: Sincronizar ResourceBar del manager
                 self.level2_manager.resource_bar.consume(8)
+                
+                # NUEVO: Restar puntos por falso positivo
+                score_mgr = self.game.player_stats.get_current_score_manager()
+                score_mgr.subtract_points(50)  # Penalización por falso positivo
+                
                 self.show_message(f"ERROR: {self.archivo_seleccionado.nombre} era seguro! -8 recursos")
               
                 # SISTEMA EDUCATIVO: Mostrar mensaje de error
@@ -6490,6 +6522,11 @@ class Level2Screen(Screen):
                 # Éxito - eliminar virus
                 self.archivo_seleccionado.eliminado = True
                 self.viruses_cleaned += 1
+                
+                # NUEVO: Añadir puntos por limpiar virus
+                score_mgr = self.game.player_stats.get_current_score_manager()
+                score_mgr.add_points(150, with_combo=True)  # Puntos por limpiar virus
+                
                 # Desactivar síntoma inmediatamente
                 if self.archivo_seleccionado.tipo_virus:
                     self.gestor_virus.desactivar_sintoma(self.archivo_seleccionado.tipo_virus)
@@ -6534,6 +6571,10 @@ class Level2Screen(Screen):
                 self.mistakes_made += 1
                 # INTEGRACIÓN: Sincronizar ResourceBar del manager
                 self.level2_manager.resource_bar.consume(penalizacion)
+                
+                # NUEVO: Restar puntos por error
+                score_mgr = self.game.player_stats.get_current_score_manager()
+                score_mgr.subtract_points(100)  # Penalización por eliminar archivo limpio
                 self.show_message(
                     f"ERROR: Eliminaste archivo seguro! -{penalizacion} recursos")
                   
@@ -6940,8 +6981,11 @@ class Level2Screen(Screen):
                 self.game.change_screen(QuizScreen(self.game, mode='post', next_screen=MenuScreen(self.game)))
                 return
           
-            # Si no hay quiz final, mostrar victoria normal
-            mensaje = f"Virus eliminados: {self.viruses_cleaned}/{self.total_viruses}"
+            # Si no hay quiz final, mostrar victoria normal con puntaje
+            score_mgr = self.game.player_stats.get_current_score_manager()
+            puntaje_final = score_mgr.current_score
+            rank = score_mgr.get_rank()
+            mensaje = f"Virus eliminados: {self.viruses_cleaned}/{self.total_viruses}\nPuntaje: {puntaje_final} - Rango: {rank}"
             self.game.change_screen(VictoryVideoScreen(self.game, mensaje))
           
         elif self.level2_manager.defeat_checker.check_defeat():
@@ -7071,6 +7115,30 @@ class Level2Screen(Screen):
             # Dibujar sombra y texto
             surf.blit(texto_shadow, (texto_x + 1, texto_y + 1))
             surf.blit(texto_recursos, (texto_x, texto_y))
+            
+            # NUEVO: Mostrar puntaje actual en la esquina superior derecha
+            score_mgr = self.game.player_stats.get_current_score_manager()
+            puntaje_actual = score_mgr.current_score
+            combo = score_mgr.combo
+            
+            # Texto de puntaje
+            puntaje_texto = f"Puntaje: {puntaje_actual}"
+            puntaje_surface = self.fonts["normal"].render(puntaje_texto, True, (255, 215, 0))
+            puntaje_shadow = self.fonts["normal"].render(puntaje_texto, True, (0, 0, 0))
+            
+            puntaje_x = SCREEN_W - puntaje_surface.get_width() - 20
+            puntaje_y = 10
+            
+            surf.blit(puntaje_shadow, (puntaje_x + 1, puntaje_y + 1))
+            surf.blit(puntaje_surface, (puntaje_x, puntaje_y))
+            
+            # Mostrar combo si existe
+            if combo > 0:
+                combo_texto = f"Combo x{combo}"
+                combo_surface = self.fonts["small"].render(combo_texto, True, (100, 255, 100))
+                combo_x = SCREEN_W - combo_surface.get_width() - 20
+                combo_y = puntaje_y + 25
+                surf.blit(combo_surface, (combo_x, combo_y))
             
             # Síntomas globales
             self.dibujar_sintomas_globales(surf)
