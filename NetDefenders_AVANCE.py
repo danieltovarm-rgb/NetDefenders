@@ -1009,6 +1009,10 @@ class Level1PostMortemScreen(Screen):
     
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN or (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1):
+            # Desbloquear Nivel 2 si ganó el jugador
+            if self.level1_data.get('victoria', False):
+                self.game.unlocked_levels["Nivel 2"] = True
+            
             # Ir al menú principal o siguiente nivel
             self.game.change_screen(LevelSelectScreen(self.game))
         
