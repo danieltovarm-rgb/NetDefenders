@@ -1,0 +1,7 @@
+*.html linguist-generated=true
+
+
+*.tex linguist-documentation=true
+*.sty linguist-documentation=true
+*.cls linguist-documentation=true
+*.bib linguist-documentation=true
