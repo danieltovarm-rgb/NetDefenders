@@ -18,6 +18,7 @@
 *.out linguist-detectable=false
 *.fls linguist-detectable=false
 *.fdb_latexmk linguist-detectable=false
+*.toc linguist-detectable=false
 
 # Asegurar Python como dominante
 *.py linguist-dominant=true
