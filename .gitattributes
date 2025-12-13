@@ -1,7 +1,7 @@
-*.html linguist-generated=true
+*.html linguist-detectable=false
+*.tex  linguist-detectable=false
+*.sty  linguist-detectable=false
+*.cls  linguist-detectable=false
+*.bib  linguist-detectable=false
 
-
-*.tex linguist-documentation=true
-*.sty linguist-documentation=true
-*.cls linguist-documentation=true
-*.bib linguist-documentation=true
+*.py linguist-dominant=true
